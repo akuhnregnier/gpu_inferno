@@ -28,10 +28,15 @@ set(
     ${CMAKE_SOURCE_DIR}/gpu_inferno
     ${CMAKE_SOURCE_DIR}/metal-cpp
     ${CMAKE_SOURCE_DIR}/pybind11/include
-    #[[PYTHON_INCLUDE]]
     "/Users/alexander/.pyenv-arm64/versions/miniconda3-latest/envs/python-inferno/include/python3.10"
 )
-set(LIBS ${APPLE_FWK_FOUNDATION} ${APPLE_FWK_QUARTZ_CORE} ${APPLE_FWK_METAL})
+set(
+    LIBS
+
+    ${APPLE_FWK_FOUNDATION}
+    ${APPLE_FWK_QUARTZ_CORE}
+    ${APPLE_FWK_METAL}
+)
 
 target_include_directories(${PROJECT_NAME} ${INC_DIRS})
 target_link_libraries(${PROJECT_NAME} ${LIBS})
