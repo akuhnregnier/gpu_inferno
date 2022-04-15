@@ -7,7 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		114AF143280993CA00121626 /* main.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 114AF142280993CA00121626 /* main.cpp */; };
+		114AF14D2809946D00121626 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 114AF14C2809946D00121626 /* Foundation.framework */; };
+		114AF1512809947800121626 /* Metal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 114AF1502809947800121626 /* Metal.framework */; };
+		114AF153280994BF00121626 /* QuartzCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 114AF152280994BF00121626 /* QuartzCore.framework */; platformFilter = maccatalyst; };
+		114AF15D2809AAF000121626 /* main.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 114AF142280993CA00121626 /* main.cpp */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -25,6 +28,13 @@
 /* Begin PBXFileReference section */
 		114AF13F280993CA00121626 /* gpu_inferno */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = gpu_inferno; sourceTree = BUILT_PRODUCTS_DIR; };
 		114AF142280993CA00121626 /* main.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = main.cpp; sourceTree = "<group>"; };
+		114AF14C2809946D00121626 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = System/Library/Frameworks/Foundation.framework; sourceTree = SDKROOT; };
+		114AF1502809947800121626 /* Metal.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Metal.framework; path = System/Library/Frameworks/Metal.framework; sourceTree = SDKROOT; };
+		114AF152280994BF00121626 /* QuartzCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = QuartzCore.framework; path = System/Library/Frameworks/QuartzCore.framework; sourceTree = SDKROOT; };
+		114AF1542809960100121626 /* metal-cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = "metal-cpp"; sourceTree = SOURCE_ROOT; };
+		114AF1552809967700121626 /* README.md */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
+		114AF1562809985000121626 /* CoreGraphics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreGraphics.framework; path = System/Library/Frameworks/CoreGraphics.framework; sourceTree = SDKROOT; };
+		114AF15C2809A3F100121626 /* loadLibrary.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = loadLibrary.hpp; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -32,6 +42,9 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				114AF1512809947800121626 /* Metal.framework in Frameworks */,
+				114AF14D2809946D00121626 /* Foundation.framework in Frameworks */,
+				114AF153280994BF00121626 /* QuartzCore.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -41,8 +54,11 @@
 		114AF136280993CA00121626 = {
 			isa = PBXGroup;
 			children = (
+				114AF1542809960100121626 /* metal-cpp */,
+				114AF1552809967700121626 /* README.md */,
 				114AF141280993CA00121626 /* gpu_inferno */,
 				114AF140280993CA00121626 /* Products */,
+				114AF14B2809946C00121626 /* Frameworks */,
 			);
 			sourceTree = "<group>";
 		};
@@ -57,9 +73,21 @@
 		114AF141280993CA00121626 /* gpu_inferno */ = {
 			isa = PBXGroup;
 			children = (
+				114AF15C2809A3F100121626 /* loadLibrary.hpp */,
 				114AF142280993CA00121626 /* main.cpp */,
 			);
 			path = gpu_inferno;
+			sourceTree = "<group>";
+		};
+		114AF14B2809946C00121626 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				114AF1562809985000121626 /* CoreGraphics.framework */,
+				114AF152280994BF00121626 /* QuartzCore.framework */,
+				114AF1502809947800121626 /* Metal.framework */,
+				114AF14C2809946D00121626 /* Foundation.framework */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -119,7 +147,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				114AF143280993CA00121626 /* main.cpp in Sources */,
+				114AF15D2809AAF000121626 /* main.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -241,6 +269,11 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
+				HEADER_SEARCH_PATHS = (
+					"${PROJECT_DIR}/metal-cpp",
+					"/Users/alexander/.pyenv-arm64/versions/miniconda3-latest/envs/python-inferno/include/python3.10",
+					"${PROJECT_DIR}/pybind11/include",
+				);
 				PRODUCT_NAME = "$(TARGET_NAME)";
 			};
 			name = Debug;
@@ -249,6 +282,11 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
+				HEADER_SEARCH_PATHS = (
+					"${PROJECT_DIR}/metal-cpp",
+					"/Users/alexander/.pyenv-arm64/versions/miniconda3-latest/envs/python-inferno/include/python3.10",
+					"${PROJECT_DIR}/pybind11/include",
+				);
 				PRODUCT_NAME = "$(TARGET_NAME)";
 			};
 			name = Release;
