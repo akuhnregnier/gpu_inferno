@@ -11,12 +11,12 @@ find_library(APPLE_FWK_METAL Metal REQUIRED)
 add_executable(
     ${PROJECT_NAME}
 
-    ${PROJECT_SOURCE_DIR}/gpu_inferno/main.cpp
+    ${PROJECT_SOURCE_DIR}/src/main.cpp
 )
 
 add_subdirectory(pybind11)
 set(PYBIND_NAME "py_gpu_inferno")
-pybind11_add_module(${PYBIND_NAME} gpu_inferno/pybind.cpp)
+pybind11_add_module(${PYBIND_NAME} src/pybind.cpp)
 
 set(PYTHON_EXECUTABLE "/Users/alexander/.pyenv-arm64/versions/miniconda3-latest/envs/python-inferno/bin/python3")
 
@@ -25,7 +25,7 @@ set(
 
     SYSTEM
     PUBLIC
-    ${CMAKE_SOURCE_DIR}/gpu_inferno
+    ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/metal-cpp
     ${CMAKE_SOURCE_DIR}/pybind11/include
     "/Users/alexander/.pyenv-arm64/versions/miniconda3-latest/envs/python-inferno/include/python3.10"
