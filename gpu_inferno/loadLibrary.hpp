@@ -15,11 +15,12 @@ MTL::Library* loadLibrary(MTL::Device* device) {
     using namespace metal;
 
     kernel void test_fn(
-            device float* buffer [[buffer(0)]],
+            device float* buffer [[ buffer(0) ]],
+            device float& offset [[ buffer(1) ]],
             uint index [[thread_position_in_grid]],
             uint gridSize [[threads_per_grid]]
         ) {
-            buffer[index] = index + 1.2f;
+            buffer[index] = offset + index + 1.3f;
         }
     )";
 

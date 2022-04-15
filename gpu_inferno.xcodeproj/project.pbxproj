@@ -11,6 +11,7 @@
 		114AF1512809947800121626 /* Metal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 114AF1502809947800121626 /* Metal.framework */; };
 		114AF153280994BF00121626 /* QuartzCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 114AF152280994BF00121626 /* QuartzCore.framework */; platformFilter = maccatalyst; };
 		114AF15D2809AAF000121626 /* main.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 114AF142280993CA00121626 /* main.cpp */; };
+		114AF1602809D57800121626 /* pybind.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 114AF15F2809D57800121626 /* pybind.cpp */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -35,6 +36,8 @@
 		114AF1552809967700121626 /* README.md */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 		114AF1562809985000121626 /* CoreGraphics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreGraphics.framework; path = System/Library/Frameworks/CoreGraphics.framework; sourceTree = SDKROOT; };
 		114AF15C2809A3F100121626 /* loadLibrary.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = loadLibrary.hpp; sourceTree = "<group>"; };
+		114AF15E2809D57700121626 /* inferno.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; path = inferno.hpp; sourceTree = "<group>"; };
+		114AF15F2809D57800121626 /* pybind.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = pybind.cpp; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -73,6 +76,8 @@
 		114AF141280993CA00121626 /* gpu_inferno */ = {
 			isa = PBXGroup;
 			children = (
+				114AF15E2809D57700121626 /* inferno.hpp */,
+				114AF15F2809D57800121626 /* pybind.cpp */,
 				114AF15C2809A3F100121626 /* loadLibrary.hpp */,
 				114AF142280993CA00121626 /* main.cpp */,
 			);
@@ -148,6 +153,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				114AF15D2809AAF000121626 /* main.cpp in Sources */,
+				114AF1602809D57800121626 /* pybind.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
