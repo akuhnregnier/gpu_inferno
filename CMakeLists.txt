@@ -18,9 +18,9 @@ set(
 
     SYSTEM
     PUBLIC
-    ${CMAKE_SOURCE_DIR}/src
-    ${CMAKE_SOURCE_DIR}/metal-cpp
-    ${CMAKE_SOURCE_DIR}/pybind11/include
+    ${CMAKE_CURRENT_LIST_DIR}/src
+    ${CMAKE_CURRENT_LIST_DIR}/metal-cpp
+    ${CMAKE_CURRENT_LIST_DIR}/pybind11/include
     "/Users/alexander/.pyenv-arm64/versions/miniconda3-latest/envs/python-inferno/include/python3.10"
 )
 set(
