@@ -73,7 +73,6 @@ class GPUCompute {
 
 public:
     GPUCompute() {
-        std::cout << "Init" << std::endl;
         autoreleasePool = NS::AutoreleasePool::alloc()->init();
         device = MTL::CreateSystemDefaultDevice();
         commandQueue = device->newCommandQueue();
@@ -99,13 +98,11 @@ public:
     }
 
     void release() {
-        std::cout << "Releasing pool" << std::endl;
         autoreleasePool->release();
         didRelease = true;
     }
 
     ~GPUCompute() {
-        std::cout << "Destructor called" << std::endl;
         if (!(didRelease)) {
             autoreleasePool->release();
         }
