@@ -219,6 +219,12 @@ public:
             litter_pool_shape,
         };
 
+        if (didSetParams) {
+            for (unsigned long i = 0; i < nParam; i++) {
+                paramBuffers[i]->release();
+            }
+        }
+
         for (unsigned long i = 0; i < nParam; i++) {
             paramBuffers[i] = createBufferFromPyArray(paramArrays[i]);
         }
@@ -231,6 +237,8 @@ public:
             if (!(didSetParams)) __builtin_printf("Did not set params.");
             assert(false);
         }
+
+        NS::AutoreleasePool* pool = NS::AutoreleasePool::alloc()->init();
 
         commandBuffer = commandQueue->commandBuffer();
         assert(commandBuffer);
@@ -268,6 +276,8 @@ public:
         commandBuffer->commit();
 
         commandBuffer->waitUntilCompleted();
+
+        pool->release();
 
         return pyArray(
             outputCount,
