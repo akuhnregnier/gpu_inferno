@@ -670,7 +670,7 @@ float calc_flam(
     //   // The flammability of the cell
 
     float TsbyT_l, Z_l, f_rhum_l, rain_rate, flammability, dry_factor,
-        f_sm_l, fuel_factor, temperature_sigmoid, fapar_sigmoid;
+        f_sm_l, fuel_factor, fapar_sigmoid, weighted_temperature_sigmoid;
 
     // Z_l,
     //   // Component of the Goff-Gratch saturation vapor pressure
@@ -752,16 +752,17 @@ float calc_flam(
         }
 
         if (include_temperature == 1) {
-            temperature_sigmoid = sigmoid(
+            float temperature_sigmoid = sigmoid(
                 temp_l, temperature_factor, temperature_centre, temperature_shape
             );
+            weighted_temperature_sigmoid = (1 + temperature_weight * (temperature_sigmoid - 1));
         }
         else if (include_temperature == 0) {
-            temperature_sigmoid = 1.0;
+            weighted_temperature_sigmoid = 1.0;
         }
         else {
             // raise ValueError("Unknown 'include_temperature'.")
-            temperature_sigmoid = -1.0;
+            weighted_temperature_sigmoid = -1.0;
         }
 
         fapar_sigmoid = sigmoid(fapar, fapar_factor, fapar_centre, fapar_shape);
@@ -769,7 +770,7 @@ float calc_flam(
         // Convert fuel build-up index to flammability factor.
         flammability = (
             (1 + dryness_weight * (dry_factor - 1))
-            * (1 + temperature_weight * (temperature_sigmoid - 1))
+            * weighted_temperature_sigmoid
             * (1 + fuel_weight * (fuel_factor - 1))
             * (1 + fapar_weight * (fapar_sigmoid - 1))
         );
