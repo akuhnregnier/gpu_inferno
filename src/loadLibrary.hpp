@@ -642,7 +642,11 @@ float calc_flam(
     float litter_pool_factor,
     float litter_pool_centre,
     float litter_pool_shape,
-    int include_temperature
+    int include_temperature,
+    float fapar_weight,
+    float dryness_weight,
+    float temperature_weight,
+    float fuel_weight
 ) {
     // Description:
     //   Performs the calculation of the flammibility
@@ -666,7 +670,7 @@ float calc_flam(
     //   // The flammability of the cell
 
     float TsbyT_l, Z_l, f_rhum_l, rain_rate, flammability, dry_factor,
-        f_sm_l, fuel_factor, temperature_f;
+        f_sm_l, fuel_factor, temperature_sigmoid, fapar_sigmoid;
 
     // Z_l,
     //   // Component of the Goff-Gratch saturation vapor pressure
@@ -748,24 +752,26 @@ float calc_flam(
         }
 
         if (include_temperature == 1) {
-            temperature_f = sigmoid(
+            temperature_sigmoid = sigmoid(
                 temp_l, temperature_factor, temperature_centre, temperature_shape
             );
         }
         else if (include_temperature == 0) {
-            temperature_f = 1.0;
+            temperature_sigmoid = 1.0;
         }
         else {
             // raise ValueError("Unknown 'include_temperature'.")
-            temperature_f = -1.0;
+            temperature_sigmoid = -1.0;
         }
+
+        fapar_sigmoid = sigmoid(fapar, fapar_factor, fapar_centre, fapar_shape);
 
         // Convert fuel build-up index to flammability factor.
         flammability = (
-            dry_factor
-            * temperature_f
-            * fuel_factor
-            * sigmoid(fapar, fapar_factor, fapar_centre, fapar_shape)
+            (1 + dryness_weight * (dry_factor - 1))
+            * (1 + temperature_weight * (temperature_sigmoid - 1))
+            * (1 + fuel_weight * (fuel_factor - 1))
+            * (1 + fapar_weight * (fapar_sigmoid - 1))
         );
     }
     else {
@@ -908,6 +914,10 @@ kernel void multi_timestep_inferno(
     const device float* litter_pool_factor [[ buffer(23) ]],
     const device float* litter_pool_centre [[ buffer(24) ]],
     const device float* litter_pool_shape [[ buffer(25) ]],
+    const device float* fapar_weight [[ buffer(26) ]],
+    const device float* dryness_weight [[ buffer(27) ]],
+    const device float* temperature_weight [[ buffer(28) ]],
+    const device float* fuel_weight [[ buffer(29) ]],
     // Thread index.
     uint id [[ thread_position_in_grid ]]
 ) {
@@ -1190,7 +1200,11 @@ kernel void multi_timestep_inferno(
             litter_pool_factor[pft_group_i],
             litter_pool_centre[pft_group_i],
             litter_pool_shape[pft_group_i],
-            include_temperature
+            include_temperature,
+            fapar_weight[pft_group_i],
+            dryness_weight[pft_group_i],
+            temperature_weight[pft_group_i],
+            fuel_weight[pft_group_i]
         );
 
         burnt_area_ft_i_l = calc_burnt_area(

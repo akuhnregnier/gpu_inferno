@@ -38,7 +38,7 @@ class GPUCompute {
     MTL::Buffer* outputBuffer;
 
     static const int nData = 17;
-    static const int nParam = 18;
+    static const int nParam = 22;
     std::array<MTL::Buffer*, nData> dataBuffers;
     std::array<MTL::Buffer*, nParam> paramBuffers;
 
@@ -195,7 +195,11 @@ public:
         pyArray dry_bal_shape,
         pyArray litter_pool_factor,
         pyArray litter_pool_centre,
-        pyArray litter_pool_shape
+        pyArray litter_pool_shape,
+        pyArray fapar_weight,
+        pyArray dryness_weight,
+        pyArray temperature_weight,
+        pyArray fuel_weight
     ) {
         // Create buffers.
         std::array<pyArray, nParam> paramArrays = {
@@ -217,6 +221,10 @@ public:
             litter_pool_factor,
             litter_pool_centre,
             litter_pool_shape,
+            fapar_weight,
+            dryness_weight,
+            temperature_weight,
+            fuel_weight,
         };
 
         if (didSetParams) {

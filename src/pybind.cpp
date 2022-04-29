@@ -52,7 +52,11 @@ PYBIND11_MODULE(py_gpu_inferno, m) {
             py::arg("dry_bal_shape"),
             py::arg("litter_pool_factor"),
             py::arg("litter_pool_centre"),
-            py::arg("litter_pool_shape")
+            py::arg("litter_pool_shape"),
+            py::arg("fapar_weight"),
+            py::arg("dryness_weight"),
+            py::arg("temperature_weight"),
+            py::arg("fuel_weight")
         )
         .def("run", &GPUCompute::run, "Run kernel with defined data and parameters.")
         .def("release", &GPUCompute::release, "Release autorelease pool.");
