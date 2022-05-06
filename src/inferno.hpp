@@ -95,10 +95,32 @@ public:
         }
 
         threadgroupSize = MTL::Size(computePipelineState->maxTotalThreadsPerThreadgroup(), 1, 1);
+
+        // Create parameter buffers for later reuse.
+        for (unsigned long i = 0; i < nParam; i++) {
+            paramBuffers[i] = device->newBuffer(nPFTGroups * dataSize, MTL::ResourceOptions());
+        }
+
     }
 
     void release() {
+        for (unsigned long i = 0; i < nParam; i++) {
+            paramBuffers[i]->release();
+        }
+
+        if (didSetData) {
+            for (unsigned long i = 0; i < nData; i++) {
+                dataBuffers[i]->release();
+            }
+        }
+        argumentBuffer->release();
+        argumentEncoder->release();
+        computePipelineState->release();
+        commandQueue->release();
+        device->release();
+
         autoreleasePool->release();
+
         didRelease = true;
     }
 
@@ -227,15 +249,15 @@ public:
             fuel_weight,
         };
 
-        if (didSetParams) {
-            for (unsigned long i = 0; i < nParam; i++) {
-                paramBuffers[i]->release();
-            }
+        for (unsigned long i = 0; i < nParam; i++) {
+            py::buffer_info paramBuf = paramArrays[i].request();
+
+            assert(paramBuf.shape[0] == nPFTGroups);
+
+            memcpy(paramBuffers[i]->contents(), paramBuf.ptr, nPFTGroups * dataSize);
+            paramBuffers[i]->didModifyRange(NS::Range::Make(0, paramBuffers[i]->length()));
         }
 
-        for (unsigned long i = 0; i < nParam; i++) {
-            paramBuffers[i] = createBufferFromPyArray(paramArrays[i]);
-        }
         didSetParams = true;
     }
 
@@ -287,10 +309,7 @@ public:
 
         pool->release();
 
-        return pyArray(
-            outputCount,
-            (float*)outputBuffer->contents()
-        );
+        return pyArray(outputCount, (float*)outputBuffer->contents());
     }
 };
 
