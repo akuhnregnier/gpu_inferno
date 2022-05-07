@@ -9,6 +9,7 @@
 #include <iostream>
 #include <fstream>
 
+
 MTL::Library* loadLibrary(MTL::Device* device) {
     const char* shaderSrc = R"(
 #include <metal_stdlib>

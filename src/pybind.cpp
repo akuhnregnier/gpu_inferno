@@ -1,6 +1,10 @@
 #include "inferno.hpp"
+#include "phase.hpp"
+#include "mpd.hpp"
 #include <pybind11/pybind11.h>
 #include <pybind11/numpy.h>
+#include <math.h>
+
 
 namespace py = pybind11;
 
@@ -60,4 +64,19 @@ PYBIND11_MODULE(py_gpu_inferno, m) {
         )
         .def("run", &GPUCompute::run, "Run kernel with defined data and parameters.")
         .def("release", &GPUCompute::release, "Release autorelease pool.");
+
+    m.def("calculate_phase", &calculate_phase, "Calculate phase", py::arg("x"));
+
+    py::class_<GPUCalculatePhase>(m, "GPUCalculatePhase")
+        .def(py::init<int>())
+        .def("run", &GPUCalculatePhase::run, "Run calculate_phase.",
+                py::arg("x")
+            );
+
+    py::class_<GPUCalculateMPD>(m, "GPUCalculateMPD")
+        .def(py::init<int>())
+        .def("run", &GPUCalculateMPD::run, "Run calculate_mpd.",
+                py::arg("obs"),
+                py::arg("pred")
+            );
 }

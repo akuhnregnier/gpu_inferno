@@ -29,7 +29,7 @@ class GPUCompute {
     static const int nPFT = 13;
     static const int nTotalPFT = 17;
 
-    NS::AutoreleasePool* autoreleasePool;
+    // NS::AutoreleasePool* autoreleasePool;
     MTL::Device* device;
     MTL::Library* library;
     MTL::Function* fn;
@@ -73,7 +73,7 @@ class GPUCompute {
 
 public:
     GPUCompute() {
-        autoreleasePool = NS::AutoreleasePool::alloc()->init();
+        // autoreleasePool = NS::AutoreleasePool::alloc()->init();
         device = MTL::CreateSystemDefaultDevice();
         commandQueue = device->newCommandQueue();
 
@@ -112,6 +112,7 @@ public:
             for (unsigned long i = 0; i < nData; i++) {
                 dataBuffers[i]->release();
             }
+            outputBuffer->release();
         }
         argumentBuffer->release();
         argumentEncoder->release();
@@ -119,14 +120,14 @@ public:
         commandQueue->release();
         device->release();
 
-        autoreleasePool->release();
+        // autoreleasePool->release();
 
         didRelease = true;
     }
 
     ~GPUCompute() {
         if (!(didRelease)) {
-            autoreleasePool->release();
+            release();
         }
     }
 

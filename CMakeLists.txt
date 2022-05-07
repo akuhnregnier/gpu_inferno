@@ -16,7 +16,15 @@ find_library(APPLE_FWK_QUARTZ_CORE QuartzCore REQUIRED)
 find_library(APPLE_FWK_METAL Metal REQUIRED)
 
 add_subdirectory(pybind11)
-pybind11_add_module(${PROJECT_NAME} src/pybind.cpp src/inferno.hpp src/loadLibrary.hpp)
+pybind11_add_module(${PROJECT_NAME}
+    src/pybind.cpp
+    src/inferno.hpp
+    src/loadLibrary.hpp
+    src/phase.hpp
+    src/loadPhaseLibrary.hpp
+    src/mpd.hpp
+    src/loadMPDLibrary.hpp
+)
 
 set(PYTHON_EXECUTABLE "/Users/alexander/.pyenv-arm64/versions/miniconda3-latest/envs/python-inferno/bin/python3")
 
