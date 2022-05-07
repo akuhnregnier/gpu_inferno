@@ -98,9 +98,10 @@ public:
 
     std::tuple<float, unsigned int> run(pyArray obs, pyArray pred) {
         float mpdVal = 0.0f;
-        unsigned int ignored = 0, count = 0;
+        unsigned int ignored = 0, count = 0, inputN;
         float* diffs;
         bool* diffsMask;
+        void * obsPtr, * predPtr;
 
         NS::AutoreleasePool* pool = NS::AutoreleasePool::alloc()->init();
 
@@ -116,11 +117,18 @@ public:
             throw std::runtime_error(
                 "Number of points along 2nd dimension do not match number given in class setup!"
             );
+        inputN = obsInfo.size;
+        obsPtr = obsInfo.ptr;
+        predPtr = predInfo.ptr;
 
-        memcpy(obsBuffer->contents(), obsInfo.ptr, obsInfo.size * dataSize);
+        // Release Python GIL after dealing with the input Python (NumPy)
+        // arrays and getting the underlying data pointer.
+        py::gil_scoped_release release;
+
+        memcpy(obsBuffer->contents(), obsPtr, inputN * dataSize);
+        memcpy(predBuffer->contents(), predPtr, inputN * dataSize);
+
         obsBuffer->didModifyRange(NS::Range::Make(0, obsBuffer->length()));
-
-        memcpy(predBuffer->contents(), predInfo.ptr, predInfo.size * dataSize);
         predBuffer->didModifyRange(NS::Range::Make(0, predBuffer->length()));
 
         commandBuffer = commandQueue->commandBuffer();
@@ -161,6 +169,8 @@ public:
         }
 
         pool->release();
+
+        py::gil_scoped_acquire acquire;
 
         return std::make_tuple(mpdVal / (PI * count), ignored);
     }
