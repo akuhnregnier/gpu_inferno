@@ -90,10 +90,6 @@ public:
         }
     }
 
-    pyArray run2(pyArray x) {
-        return pyArray(N, static_cast<float*>(x.request().ptr));
-    }
-
     pyArray run(pyArray x) {
         NS::AutoreleasePool* pool = NS::AutoreleasePool::alloc()->init();
 

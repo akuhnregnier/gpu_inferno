@@ -1,6 +1,7 @@
 #include "inferno.hpp"
 #include "phase.hpp"
 #include "mpd.hpp"
+#include "consAvg.hpp"
 #include <pybind11/pybind11.h>
 #include <pybind11/numpy.h>
 #include <math.h>
@@ -78,5 +79,12 @@ PYBIND11_MODULE(py_gpu_inferno, m) {
         .def("run", &GPUCalculateMPD::run, "Run calculate_mpd.",
                 py::arg("obs"),
                 py::arg("pred")
+            );
+
+    py::class_<GPUConsAvg>(m, "GPUConsAvg")
+        .def(py::init<int, pyArray>())
+        .def("run", &GPUConsAvg::run, "Run conservative averaging.",
+                py::arg("inData"),
+                py::arg("inMask")
             );
 }
