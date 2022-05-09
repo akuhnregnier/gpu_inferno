@@ -1003,7 +1003,7 @@ kernel void multi_timestep_inferno(
     const device float* pstar = data_arrays.pstar;
     // XXX NOTE - This is with a single soil layer selected!
     const device float* sthu_soilt_single = data_arrays.sthu_soilt_single;
-//    const device float* frac = data_arrays.frac;
+    const device float* frac = data_arrays.frac;
     const device float* c_soil_dpm_gb = data_arrays.c_soil_dpm_gb;
 //    const device float* c_soil_rpm_gb = data_arrays.c_soil_rpm_gb;
     const device float* canht = data_arrays.canht;
@@ -1039,7 +1039,7 @@ kernel void multi_timestep_inferno(
           temperature, ls_rain_val, con_rain_val, sthu_soilt_single_val,
           pstar_val, q1p5m_tile_val, fuel_build_up_val, c_soil_dpm_gb_val,
           fapar_diag_pft_val, dry_days_val, grouped_dry_bal_val,
-          litter_pool_val, canht_val;
+          litter_pool_val, canht_val, frac_val;
 
     // Plant Material that is available as fuel (on the surface)
     const float pmtofuel = 0.7;
@@ -1094,6 +1094,7 @@ kernel void multi_timestep_inferno(
         canht_val = get_element_3d(canht, indices_3d, nat_pft_shape_3d);
         litter_pool_val = get_element_3d(litter_pool, indices_3d, nat_pft_shape_3d);
         grouped_dry_bal_val = get_element_3d(grouped_dry_bal, grouped_indices_3d, grouped_pft_shape_3d);
+        frac_val = get_element_3d(frac, indices_3d, total_pft_shape_3d);
 
         // Diagnose the balanced-growth leaf area index and the carbon
         // contents of leaves and wood.
@@ -1213,7 +1214,8 @@ kernel void multi_timestep_inferno(
             flammability_ft_i_l, ignitions_l, avg_ba[i]
         );
 
-        // Simply record the pft-specific variables, calculate gridbox totals later.
+        // Simply record the pft-specific variables weighted by frac, calculate
+        // gridbox totals later.
         set_element_3d(
             out,
             // Select using 3d indices.
@@ -1221,7 +1223,7 @@ kernel void multi_timestep_inferno(
             // Shape.
             nat_pft_shape_3d,
             // PFT burnt area to record.
-            burnt_area_ft_i_l
+            burnt_area_ft_i_l * frac_val
         );
     }
 }

@@ -63,7 +63,9 @@ PYBIND11_MODULE(py_gpu_inferno, m) {
             py::arg("temperature_weight"),
             py::arg("fuel_weight")
         )
-        .def("run", &GPUCompute::run, "Run kernel with defined data and parameters.")
+        .def("run", &GPUCompute::run, "Run kernel with defined data and parameters.",
+            py::arg("out")
+        )
         .def("release", &GPUCompute::release, "Release autorelease pool.");
 
     m.def("calculate_phase", &calculate_phase, "Calculate phase", py::arg("x"));

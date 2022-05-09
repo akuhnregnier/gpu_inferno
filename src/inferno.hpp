@@ -262,7 +262,7 @@ public:
         didSetParams = true;
     }
 
-    pyArray run() {
+    void run(pyArray out) {
         if (!(didSetParams && didSetData)) {
             if (!(didSetData)) __builtin_printf("Did not set data.");
             if (!(didSetParams)) __builtin_printf("Did not set params.");
@@ -310,7 +310,39 @@ public:
 
         pool->release();
 
-        return pyArray(outputCount, (float*)outputBuffer->contents());
+        // Perform sum over PFT axis.
+        //
+        // NOTE - The below would be more correct, but does not currently correspond to the
+        // NUMBA Python implementation.
+        // return np.sum(data * frac[:, : data.shape[1]], axis=1) / np.sum(
+        //     frac[:, : data.shape[1]], axis=1
+        // )
+        // return np.sum(data * frac[:, : data.shape[1]], axis=1)
+
+        // Note that multiplication by frac already occurs within the kernel!
+        float* ba_frac = (float*)outputBuffer->contents();
+        py::buffer_info outInfo = out.request();
+        if (outInfo.ndim != 2)
+            throw std::runtime_error("Incompatible out dimension!");
+        if ((outInfo.shape[0] != Nt) || (outInfo.shape[1] != landPts))
+            throw std::runtime_error("Expected out dimensions (Nt, landPts)!");
+
+        auto outR = out.mutable_unchecked<2>();
+
+        // Sum over PFT axis.
+        for (int ti = 0; ti < Nt; ti++) {
+            for (int land_i = 0; land_i < landPts; land_i++) {
+                float pft_sum = 0.0f;
+                for (int pft_i = 0; pft_i < nPFT; pft_i++) {
+                    pft_sum += ba_frac[
+                        (ti * nPFT * landPts)
+                        + (pft_i * landPts)
+                        + land_i
+                    ];
+                }
+                outR(ti, land_i) = pft_sum;
+            }
+        }
     }
 };
 
