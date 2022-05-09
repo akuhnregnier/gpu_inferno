@@ -9,6 +9,48 @@
 
 namespace py = pybind11;
 
+using pyArray = py::array_t<float, py::array::c_style>;
+
+
+float nme(pyArray obs, pyArray pred) {
+    py::buffer_info obsInfo = obs.request();
+    py::buffer_info predInfo = pred.request();
+    if (obsInfo.shape != predInfo.shape)
+        throw std::runtime_error("Incompatible buffer shapes!");
+
+    int i;
+    int N = obsInfo.size;
+    float* obsPtr = (float*)obsInfo.ptr;
+    float* predPtr = (float*)predInfo.ptr;
+
+    // Release Python GIL after dealing with the input Python (NumPy)
+    // arrays and getting the underlying data pointer.
+    py::gil_scoped_release release;
+
+    float meanObs = 0.0f;
+    float denom = 0.0f;
+    float meanAbsDiff = 0.0f;
+
+    for (i = 0; i < N; i++) {
+        meanObs += obsPtr[i];
+    }
+    meanObs /= N;
+
+    for (i = 0; i < N; i++) {
+        float obsVal;
+        obsVal = obsPtr[i];
+        denom += abs(obsVal - meanObs);
+        meanAbsDiff += abs(predPtr[i] - obsVal);
+    }
+    // No need to divide both by N since they will be divided later on anyway.
+    // denom /= N;
+    // meanAbsDiff /= N;
+
+    py::gil_scoped_acquire acquire;
+
+    return meanAbsDiff / denom;
+}
+
 
 PYBIND11_MODULE(py_gpu_inferno, m) {
     m.doc() = "GPU INFERNO";
@@ -89,4 +131,6 @@ PYBIND11_MODULE(py_gpu_inferno, m) {
                 py::arg("inData"),
                 py::arg("inMask")
             );
+
+    m.def("nme", &nme, "Calculate NME error", py::arg("obs"), py::arg("pred"));
 }
