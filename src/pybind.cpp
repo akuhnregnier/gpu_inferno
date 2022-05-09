@@ -6,6 +6,7 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/numpy.h>
 #include <math.h>
+#include <stdexcept>
 
 
 namespace py = pybind11;
@@ -50,6 +51,72 @@ float nme(pyArray obs, pyArray pred) {
     py::gil_scoped_acquire acquire;
 
     return meanAbsDiff / denom;
+}
+
+
+void cons_avg_no_mask(pyArray weights, pyArray data, pyArray out) {
+    py::buffer_info weightsInfo = weights.request();
+    py::buffer_info dataInfo = data.request();
+    py::buffer_info outInfo = out.request();
+    if (weightsInfo.ndim != 2)
+        throw std::runtime_error("Expected weights array with 2 dimensions!");
+    if (dataInfo.ndim != 2)
+        throw std::runtime_error("Expected data array with 2 dimensions!");
+    if (outInfo.ndim != 2)
+        throw std::runtime_error("Expected out array with 2 dimensions!");
+
+    int M = weightsInfo.shape[0];
+    int N = weightsInfo.shape[1];
+    int L = dataInfo.shape[1];
+
+    if (dataInfo.shape[0] != M)
+        throw std::runtime_error("Expected data dim 0 = N!");
+    if (outInfo.shape[0] != N)
+        throw std::runtime_error("Expected out dim 0 = N!");
+    if (outInfo.shape[1] != L)
+        throw std::runtime_error("Expected out dim 1 = L!");
+
+    float* weightsPtr = (float*)weightsInfo.ptr;
+    float* dataPtr = (float*)dataInfo.ptr;
+    float* outPtr = (float*)outInfo.ptr;
+
+    // Release Python GIL after dealing with the input Python (NumPy)
+    // arrays and getting the underlying data pointer.
+    py::gil_scoped_release release;
+
+    float* cumWeights = new float[N];
+
+    // Calculate cumulative weights.
+    for (int n = 0; n < N; n++) {
+        float cumWeight = 0.0f;
+
+        for (int m = 0; m < M; m++) {
+            cumWeight += weightsPtr[m * N + n];
+        }
+
+        cumWeights[n] = cumWeight;
+    }
+
+    for (int li = 0; li < L; li++) {
+        for (int n = 0; n < N; n++) {
+            float cumVal = 0.0f;
+
+            for (int m = 0; m < M; m++) {
+                float weight = weightsPtr[m * N + n];
+
+                if (weight < 1e-9) continue;
+
+                float value = dataPtr[m * L + li];
+                cumVal += weight * value;
+            }
+
+            outPtr[n * L + li] = cumVal / cumWeights[n];
+        }
+    }
+
+    delete [] cumWeights;
+
+    py::gil_scoped_acquire acquire;
 }
 
 
@@ -140,4 +207,13 @@ PYBIND11_MODULE(py_gpu_inferno, m) {
             );
 
     m.def("nme", &nme, "Calculate NME error", py::arg("obs"), py::arg("pred"));
+
+    m.def(
+        "cons_avg_no_mask",
+        &cons_avg_no_mask,
+        "Calculate conservative monthly averages without masks.",
+        py::arg("weights"),
+        py::arg("data"),
+        py::arg("out")
+    );
 }
