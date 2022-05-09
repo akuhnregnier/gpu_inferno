@@ -785,6 +785,100 @@ float calc_flam(
 }
 
 
+float calc_flam_flam2(
+    float temp_l,
+    float fuel_build_up,
+    float fapar,
+    float dry_days,
+    int dryness_method,
+    int fuel_build_up_method,
+    float fapar_factor,
+    float fapar_centre,
+    float fapar_shape,
+    float fuel_build_up_factor,
+    float fuel_build_up_centre,
+    float fuel_build_up_shape,
+    float temperature_factor,
+    float temperature_centre,
+    float temperature_shape,
+    float dry_day_factor,
+    float dry_day_centre,
+    float dry_day_shape,
+    float dry_bal,
+    float dry_bal_factor,
+    float dry_bal_centre,
+    float dry_bal_shape,
+    float litter_pool,
+    float litter_pool_factor,
+    float litter_pool_centre,
+    float litter_pool_shape,
+    int include_temperature,
+    float fapar_weight,
+    float dryness_weight,
+    float temperature_weight,
+    float fuel_weight
+) {
+    // Only flammability_method 2.
+
+    float dry_factor, fuel_factor, fapar_sigmoid, weighted_temperature_sigmoid;
+
+    // New calculation, based on FAPAR (and derived fuel_build_up).
+
+    if (dryness_method == 1) {
+        dry_factor = sigmoid(dry_days, dry_day_factor, dry_day_centre, dry_day_shape);
+    }
+    else if (dryness_method == 2) {
+        dry_factor = sigmoid(dry_bal, dry_bal_factor, dry_bal_centre, dry_bal_shape);
+    }
+    else {
+        // raise ValueError("Unknown 'dryness_method'.");
+        dry_factor = -1;
+    }
+
+    if (fuel_build_up_method == 1) {
+        fuel_factor = sigmoid(
+            fuel_build_up,
+            fuel_build_up_factor,
+            fuel_build_up_centre,
+            fuel_build_up_shape
+        );
+    }
+    else if (fuel_build_up_method == 2) {
+        fuel_factor = sigmoid(
+            litter_pool, litter_pool_factor, litter_pool_centre, litter_pool_shape
+        );
+    }
+    else {
+        // raise ValueError("Unknown 'fuel_build_up_method'.")
+        fuel_factor = -1.0;
+    }
+
+    if (include_temperature == 1) {
+        float temperature_sigmoid = sigmoid(
+            temp_l, temperature_factor, temperature_centre, temperature_shape
+        );
+        weighted_temperature_sigmoid = (1 + temperature_weight * (temperature_sigmoid - 1));
+    }
+    else if (include_temperature == 0) {
+        weighted_temperature_sigmoid = 1.0;
+    }
+    else {
+        // raise ValueError("Unknown 'include_temperature'.")
+        weighted_temperature_sigmoid = -1.0;
+    }
+
+    fapar_sigmoid = sigmoid(fapar, fapar_factor, fapar_centre, fapar_shape);
+
+    // Convert fuel build-up index to flammability factor.
+    return (
+        (1 + dryness_weight * (dry_factor - 1))
+        * weighted_temperature_sigmoid
+        * (1 + fuel_weight * (fuel_factor - 1))
+        * (1 + fapar_weight * (fapar_sigmoid - 1))
+    );
+}
+
+
 inline float calc_burnt_area(float flam_l, float ignitions_l, float avg_ba_i) {
     // Description:
     //    Calculate the burnt area
@@ -819,6 +913,17 @@ int get_pft_group_index(int pft_i) {
         return 2;
     }
 }
+
+
+inline int get_index_3d(int x, int y, int z, const thread int* shape_3d) {
+    return (x * shape_3d[1] * shape_3d[2]) + (y * shape_3d[2]) + z;
+}
+
+
+inline int get_index_2d(int x, int y, const thread int* shape_2d) {
+    return (x * shape_2d[1]) + y;
+}
+
 
 inline void set_element_3d(
     device float* arr,
@@ -885,7 +990,7 @@ struct DataArrays {
     const device float* dry_days [[ id(16) ]];
 };
 
-kernel void multi_timestep_inferno(
+kernel void multi_timestep_inferno_general(
     // Output buffer.
     device float* out [[ buffer(0) ]],
     // Params.
@@ -894,7 +999,7 @@ kernel void multi_timestep_inferno(
     const device int& dryness_method [[ buffer(3) ]],
     const device int& fuel_build_up_method [[ buffer(4) ]],
     const device int& include_temperature [[ buffer(5) ]],
-    const device int& Nt  [[ buffer(6) ]],  // i.e. <data>.shape[0].
+    const device int& Nt [[ buffer(6) ]],  // i.e. <data>.shape[0].
     // Input arrays.
     const device DataArrays& data_arrays [[ buffer(7) ]],
     // Parameters.
@@ -1113,9 +1218,6 @@ kernel void multi_timestep_inferno(
 
         // Temperatures constrained akin to qsat (from the WMO)
         if ((temperature > 338.15) || (temperature < 183.15)) {
-            // out[11] = temperature;
-            // out[12] = -2.0f;
-            // out[13] = t1p5m_tile[0];
             continue;
         }
 
@@ -1225,6 +1327,148 @@ kernel void multi_timestep_inferno(
             // PFT burnt area to record.
             burnt_area_ft_i_l * frac_val
         );
+    }
+}
+
+kernel void multi_timestep_inferno_ig1_flam2(
+    // Optimised for only:
+    // - ignition mode 1
+    // - flammability_method 2
+
+    // Output buffer.
+    device float* out [[ buffer(0) ]],
+    // Params.
+    const device int& ignition_method [[ buffer(1) ]],
+    const device int& flammability_method [[ buffer(2) ]],
+    const device int& dryness_method [[ buffer(3) ]],
+    const device int& fuel_build_up_method [[ buffer(4) ]],
+    const device int& include_temperature [[ buffer(5) ]],
+    const device int& Nt [[ buffer(6) ]],  // i.e. <data>.shape[0].
+    // Input arrays.
+    const device DataArrays& data_arrays [[ buffer(7) ]],
+    // Parameters.
+    const device float* fapar_factor [[ buffer(8) ]],
+    const device float* fapar_centre [[ buffer(9) ]],
+    const device float* fapar_shape [[ buffer(10) ]],
+    const device float* fuel_build_up_factor [[ buffer(11) ]],
+    const device float* fuel_build_up_centre [[ buffer(12) ]],
+    const device float* fuel_build_up_shape [[ buffer(13) ]],
+    const device float* temperature_factor [[ buffer(14) ]],
+    const device float* temperature_centre [[ buffer(15) ]],
+    const device float* temperature_shape [[ buffer(16) ]],
+    const device float* dry_day_factor [[ buffer(17) ]],
+    const device float* dry_day_centre [[ buffer(18) ]],
+    const device float* dry_day_shape [[ buffer(19) ]],
+    const device float* dry_bal_factor [[ buffer(20) ]],
+    const device float* dry_bal_centre [[ buffer(21) ]],
+    const device float* dry_bal_shape [[ buffer(22) ]],
+    const device float* litter_pool_factor [[ buffer(23) ]],
+    const device float* litter_pool_centre [[ buffer(24) ]],
+    const device float* litter_pool_shape [[ buffer(25) ]],
+    const device float* fapar_weight [[ buffer(26) ]],
+    const device float* dryness_weight [[ buffer(27) ]],
+    const device float* temperature_weight [[ buffer(28) ]],
+    const device float* fuel_weight [[ buffer(29) ]],
+    const device bool* checks_failed [[ buffer(30) ]],
+    // Thread index.
+    uint id [[ thread_position_in_grid ]]
+) {
+    // Input arrays.
+    const device float* t1p5m_tile = data_arrays.t1p5m_tile;
+    const device float* q1p5m_tile = data_arrays.q1p5m_tile;
+    const device float* pstar = data_arrays.pstar;
+    // XXX NOTE - This is with a single soil layer selected!
+    const device float* sthu_soilt_single = data_arrays.sthu_soilt_single;
+    const device float* frac = data_arrays.frac;
+    const device float* c_soil_dpm_gb = data_arrays.c_soil_dpm_gb;
+    const device float* canht = data_arrays.canht;
+    const device float* ls_rain = data_arrays.ls_rain;
+    const device float* con_rain = data_arrays.con_rain;
+    const device float* fuel_build_up = data_arrays.fuel_build_up;
+    const device float* fapar_diag_pft = data_arrays.fapar_diag_pft;
+    const device float* grouped_dry_bal = data_arrays.grouped_dry_bal;
+    const device float* litter_pool = data_arrays.litter_pool;
+    const device float* dry_days = data_arrays.dry_days;
+
+    const int shape_2d[2] = { Nt, land_pts };
+    const int total_pft_shape_3d[3] = { Nt, n_total_pft, land_pts };
+    const int nat_pft_shape_3d[3] = { Nt, npft, land_pts };
+    const int grouped_pft_shape_3d[3] = { Nt, n_pft_groups, land_pts };
+
+    float burnt_area_ft_i_l, flammability_ft_i_l, temperature,
+          fuel_build_up_val, fapar_diag_pft_val, dry_days_val,
+          grouped_dry_bal_val, litter_pool_val, frac_val;
+
+    // Get l and i from the thread id, which is in [0, land_pts * npft).
+    const int i = (id / land_pts);  // PFT index
+    const int l = id - (i * land_pts);  // Land index
+
+    // PFT group index.
+    const int pft_group_i = get_pft_group_index(i);
+
+    for (int ti = 0; ti < Nt; ti++) {
+        int nat_pft_3d_flat_i = get_index_3d(ti, i, l, nat_pft_shape_3d);
+
+        if (checks_failed[nat_pft_3d_flat_i]) continue;
+
+        // If all the checks were passes, start fire calculations
+
+        int total_pft_3d_flat_i = get_index_3d(ti, i, l, total_pft_shape_3d);
+        int grouped_pft_3d_flat_i = get_index_3d(ti, pft_group_i, l, grouped_pft_shape_3d);
+        int flat_2d = get_index_2d(ti, l, shape_2d);
+
+        temperature = t1p5m_tile[total_pft_3d_flat_i];
+        fuel_build_up_val = fuel_build_up[nat_pft_3d_flat_i];
+        fapar_diag_pft_val = fapar_diag_pft[nat_pft_3d_flat_i];
+        dry_days_val = dry_days[flat_2d];
+        litter_pool_val = litter_pool[nat_pft_3d_flat_i];
+        grouped_dry_bal_val = grouped_dry_bal[grouped_pft_3d_flat_i];
+        frac_val = frac[total_pft_3d_flat_i];
+
+        flammability_ft_i_l = calc_flam_flam2(
+            temperature,
+            fuel_build_up_val,
+            fapar_diag_pft_val,
+            dry_days_val,
+            dryness_method,
+            fuel_build_up_method,
+            fapar_factor[pft_group_i],
+            fapar_centre[pft_group_i],
+            fapar_shape[pft_group_i],
+            fuel_build_up_factor[pft_group_i],
+            fuel_build_up_centre[pft_group_i],
+            fuel_build_up_shape[pft_group_i],
+            temperature_factor[pft_group_i],
+            temperature_centre[pft_group_i],
+            temperature_shape[pft_group_i],
+            dry_day_factor[pft_group_i],
+            dry_day_centre[pft_group_i],
+            dry_day_shape[pft_group_i],
+            grouped_dry_bal_val,
+            dry_bal_factor[pft_group_i],
+            dry_bal_centre[pft_group_i],
+            dry_bal_shape[pft_group_i],
+            litter_pool_val,
+            litter_pool_factor[pft_group_i],
+            litter_pool_centre[pft_group_i],
+            litter_pool_shape[pft_group_i],
+            include_temperature,
+            fapar_weight[pft_group_i],
+            dryness_weight[pft_group_i],
+            temperature_weight[pft_group_i],
+            fuel_weight[pft_group_i]
+        );
+
+        burnt_area_ft_i_l = calc_burnt_area(
+            flammability_ft_i_l,
+            // NOTE OPT ignition mode 1 only
+            total_ignition_1,
+            avg_ba[i]
+        );
+
+        // Simply record the pft-specific variables weighted by frac, calculate
+        // gridbox totals later.
+        out[nat_pft_3d_flat_i] = burnt_area_ft_i_l * frac_val;
     }
 }
     )";
