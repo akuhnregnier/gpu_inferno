@@ -18,12 +18,16 @@ find_library(APPLE_FWK_METAL Metal REQUIRED)
 add_subdirectory(pybind11)
 pybind11_add_module(${PROJECT_NAME}
     src/pybind.cpp
+    src/consAvg.hpp
+    src/consAvgNoMask.hpp
     src/inferno.hpp
+    src/loadConsAvgLibrary.hpp
+    src/loadConsAvgNoMaskLibrary.hpp
     src/loadLibrary.hpp
-    src/phase.hpp
+    src/loadMPDLibrary.hpp
     src/loadPhaseLibrary.hpp
     src/mpd.hpp
-    src/loadMPDLibrary.hpp
+    src/phase.hpp
 )
 
 set(PYTHON_EXECUTABLE "/Users/alexander/.pyenv-arm64/versions/miniconda3-latest/envs/python-inferno/bin/python3")
