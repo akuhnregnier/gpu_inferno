@@ -794,7 +794,7 @@ public:
 
         computeCommandEncoder->setBuffer(checksFailedBuffer, 0, 30);
 
-        MTL::Size gridSize = MTL::Size(landPts * nPFT, 1, 1);
+        MTL::Size gridSize = MTL::Size(Nt * landPts * nPFT, 1, 1);
 
         computeCommandEncoder->dispatchThreads(gridSize, threadgroupSize);
         computeCommandEncoder->endEncoding();

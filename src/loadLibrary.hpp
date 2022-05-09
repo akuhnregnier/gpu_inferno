@@ -1399,77 +1399,81 @@ kernel void multi_timestep_inferno_ig1_flam2(
           fuel_build_up_val, fapar_diag_pft_val, dry_days_val,
           grouped_dry_bal_val, litter_pool_val, frac_val;
 
-    // Get l and i from the thread id, which is in [0, land_pts * npft).
-    const int i = (id / land_pts);  // PFT index
-    const int l = id - (i * land_pts);  // Land index
+    // Get l and i from the thread id, which is in [0, Nt * npft * land_pts).
+
+    const int ti = id / (npft * land_pts);  // Time index
+
+    int remainder = id - (ti * npft * land_pts);
+    const int i = remainder / land_pts;  // PFT index
+
+    remainder -= i * land_pts;
+    const int l = remainder;  // Land index
 
     // PFT group index.
     const int pft_group_i = get_pft_group_index(i);
 
-    for (int ti = 0; ti < Nt; ti++) {
-        int nat_pft_3d_flat_i = get_index_3d(ti, i, l, nat_pft_shape_3d);
+    int nat_pft_3d_flat_i = get_index_3d(ti, i, l, nat_pft_shape_3d);
 
-        if (checks_failed[nat_pft_3d_flat_i]) continue;
+    if (checks_failed[nat_pft_3d_flat_i]) return;
 
-        // If all the checks were passes, start fire calculations
+    // If all the checks were passes, start fire calculations
 
-        int total_pft_3d_flat_i = get_index_3d(ti, i, l, total_pft_shape_3d);
-        int grouped_pft_3d_flat_i = get_index_3d(ti, pft_group_i, l, grouped_pft_shape_3d);
-        int flat_2d = get_index_2d(ti, l, shape_2d);
+    int total_pft_3d_flat_i = get_index_3d(ti, i, l, total_pft_shape_3d);
+    int grouped_pft_3d_flat_i = get_index_3d(ti, pft_group_i, l, grouped_pft_shape_3d);
+    int flat_2d = get_index_2d(ti, l, shape_2d);
 
-        temperature = t1p5m_tile[total_pft_3d_flat_i];
-        fuel_build_up_val = fuel_build_up[nat_pft_3d_flat_i];
-        fapar_diag_pft_val = fapar_diag_pft[nat_pft_3d_flat_i];
-        dry_days_val = dry_days[flat_2d];
-        litter_pool_val = litter_pool[nat_pft_3d_flat_i];
-        grouped_dry_bal_val = grouped_dry_bal[grouped_pft_3d_flat_i];
-        frac_val = frac[total_pft_3d_flat_i];
+    temperature = t1p5m_tile[total_pft_3d_flat_i];
+    fuel_build_up_val = fuel_build_up[nat_pft_3d_flat_i];
+    fapar_diag_pft_val = fapar_diag_pft[nat_pft_3d_flat_i];
+    dry_days_val = dry_days[flat_2d];
+    litter_pool_val = litter_pool[nat_pft_3d_flat_i];
+    grouped_dry_bal_val = grouped_dry_bal[grouped_pft_3d_flat_i];
+    frac_val = frac[total_pft_3d_flat_i];
 
-        flammability_ft_i_l = calc_flam_flam2(
-            temperature,
-            fuel_build_up_val,
-            fapar_diag_pft_val,
-            dry_days_val,
-            dryness_method,
-            fuel_build_up_method,
-            fapar_factor[pft_group_i],
-            fapar_centre[pft_group_i],
-            fapar_shape[pft_group_i],
-            fuel_build_up_factor[pft_group_i],
-            fuel_build_up_centre[pft_group_i],
-            fuel_build_up_shape[pft_group_i],
-            temperature_factor[pft_group_i],
-            temperature_centre[pft_group_i],
-            temperature_shape[pft_group_i],
-            dry_day_factor[pft_group_i],
-            dry_day_centre[pft_group_i],
-            dry_day_shape[pft_group_i],
-            grouped_dry_bal_val,
-            dry_bal_factor[pft_group_i],
-            dry_bal_centre[pft_group_i],
-            dry_bal_shape[pft_group_i],
-            litter_pool_val,
-            litter_pool_factor[pft_group_i],
-            litter_pool_centre[pft_group_i],
-            litter_pool_shape[pft_group_i],
-            include_temperature,
-            fapar_weight[pft_group_i],
-            dryness_weight[pft_group_i],
-            temperature_weight[pft_group_i],
-            fuel_weight[pft_group_i]
-        );
+    flammability_ft_i_l = calc_flam_flam2(
+        temperature,
+        fuel_build_up_val,
+        fapar_diag_pft_val,
+        dry_days_val,
+        dryness_method,
+        fuel_build_up_method,
+        fapar_factor[pft_group_i],
+        fapar_centre[pft_group_i],
+        fapar_shape[pft_group_i],
+        fuel_build_up_factor[pft_group_i],
+        fuel_build_up_centre[pft_group_i],
+        fuel_build_up_shape[pft_group_i],
+        temperature_factor[pft_group_i],
+        temperature_centre[pft_group_i],
+        temperature_shape[pft_group_i],
+        dry_day_factor[pft_group_i],
+        dry_day_centre[pft_group_i],
+        dry_day_shape[pft_group_i],
+        grouped_dry_bal_val,
+        dry_bal_factor[pft_group_i],
+        dry_bal_centre[pft_group_i],
+        dry_bal_shape[pft_group_i],
+        litter_pool_val,
+        litter_pool_factor[pft_group_i],
+        litter_pool_centre[pft_group_i],
+        litter_pool_shape[pft_group_i],
+        include_temperature,
+        fapar_weight[pft_group_i],
+        dryness_weight[pft_group_i],
+        temperature_weight[pft_group_i],
+        fuel_weight[pft_group_i]
+    );
 
-        burnt_area_ft_i_l = calc_burnt_area(
-            flammability_ft_i_l,
-            // NOTE OPT ignition mode 1 only
-            total_ignition_1,
-            avg_ba[i]
-        );
+    burnt_area_ft_i_l = calc_burnt_area(
+        flammability_ft_i_l,
+        // NOTE OPT ignition mode 1 only
+        total_ignition_1,
+        avg_ba[i]
+    );
 
-        // Simply record the pft-specific variables weighted by frac, calculate
-        // gridbox totals later.
-        out[nat_pft_3d_flat_i] = burnt_area_ft_i_l * frac_val;
-    }
+    // Simply record the pft-specific variables weighted by frac, calculate
+    // gridbox totals later.
+    out[nat_pft_3d_flat_i] = burnt_area_ft_i_l * frac_val;
 }
     )";
 
