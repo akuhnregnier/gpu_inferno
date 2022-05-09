@@ -2,6 +2,7 @@
 #include "phase.hpp"
 #include "mpd.hpp"
 #include "consAvg.hpp"
+#include "consAvgNoMask.hpp"
 #include <pybind11/pybind11.h>
 #include <pybind11/numpy.h>
 #include <math.h>
@@ -130,6 +131,12 @@ PYBIND11_MODULE(py_gpu_inferno, m) {
         .def("run", &GPUConsAvg::run, "Run conservative averaging.",
                 py::arg("inData"),
                 py::arg("inMask")
+            );
+
+    py::class_<GPUConsAvgNoMask>(m, "GPUConsAvgNoMask")
+        .def(py::init<int, pyArray>())
+        .def("run", &GPUConsAvgNoMask::run, "Run conservative averaging.",
+                py::arg("inData")
             );
 
     m.def("nme", &nme, "Calculate NME error", py::arg("obs"), py::arg("pred"));
