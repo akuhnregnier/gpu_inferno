@@ -20,9 +20,13 @@ pybind11_add_module(${PROJECT_NAME}
     src/pybind.cpp
     src/consAvg.hpp
     src/consAvgNoMask.hpp
+    src/flam.hpp
     src/inferno.hpp
+    src/infernoAvg.hpp
     src/loadConsAvgLibrary.hpp
     src/loadConsAvgNoMaskLibrary.hpp
+    src/loadFlam2Library.hpp
+    src/loadInfAvgLibrary.hpp
     src/loadLibrary.hpp
     src/loadMPDLibrary.hpp
     src/loadPhaseLibrary.hpp

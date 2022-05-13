@@ -21,6 +21,7 @@
 namespace py = pybind11;
 
 using pyArray = py::array_t<float, py::array::c_style>;
+using pyBoolArray = py::array_t<bool, py::array::c_style>;
 
 
 const float es[1553] = {
@@ -405,18 +406,19 @@ inline int get_index_2d(int x, int y, const int* shape_2d) {
 }
 
 
-void calculateFailMask(
+void calculateDiagnostics(
     int Nt,
     int landPts,
     int nPFT,
     int nTotalPFT,
     const float* t1p5m_tile,
+    const float* q1p5m_tile,
+    const float* pstar,
     const float* ls_rain,
     const float* con_rain,
-    const float* sthu_soilt_single,
-    const float* pstar,
-    const float* q1p5m_tile,
-    bool* checksFailed
+    float* inferno_rain_out,  // (Nt, land_pts)
+    float* qsat_out,  // (Nt, npft, land_pts)
+    float* inferno_rhum_out  // (Nt, npft, land_pts)
 ) {
     // Tolerance number to filter non-physical rain values
     const float rain_tolerance = 1.0e-18;  // kg/m2/s
@@ -425,64 +427,36 @@ void calculateFailMask(
     const int total_pft_shape_3d[3] = { Nt, nTotalPFT, landPts };
     const int nat_pft_shape_3d[3] = { Nt, nPFT, landPts };
 
-    for (int li = 0; li < landPts; li++) {
-        for (int pfti = 0; pfti < nPFT; pfti++) {
-            for (int ti = 0; ti < Nt; ti++) {
+    for (int ti = 0; ti < Nt; ti++) {
+        for (int li = 0; li < landPts; li++) {
+
+            int _2d_flat_i = get_index_2d(ti, li, shape_2d);
+
+            float ls_rain_val = ls_rain[_2d_flat_i];
+            float con_rain_val = con_rain[_2d_flat_i];
+            float pstar_val = pstar[_2d_flat_i];
+
+            if (ls_rain_val < rain_tolerance) {
+                ls_rain_val = 0.0;
+            }
+            if (con_rain_val < rain_tolerance) {
+                con_rain_val = 0.0;
+            }
+
+            float inferno_rain_l = ls_rain_val + con_rain_val;
+            inferno_rain_out[_2d_flat_i] = inferno_rain_l;
+
+            for (int pfti = 0; pfti < nPFT; pfti++) {
                 int nat_pft_3d_flat_i = get_index_3d(ti, pfti, li, nat_pft_shape_3d);
                 int total_pft_3d_flat_i = get_index_3d(ti, pfti, li, total_pft_shape_3d);
-                int _2d_flat_i = get_index_2d(ti, li, shape_2d);
-
-                checksFailed[nat_pft_3d_flat_i] = true;
-
                 float temperature = t1p5m_tile[total_pft_3d_flat_i];
-                float ls_rain_val = ls_rain[_2d_flat_i];
-                float con_rain_val = con_rain[_2d_flat_i];
-                float sthu_soilt_single_val = sthu_soilt_single[_2d_flat_i];
-                float pstar_val = pstar[_2d_flat_i];
                 float q1p5m_tile_val = q1p5m_tile[total_pft_3d_flat_i];
 
-                // Conditional statements to make sure we are dealing with
-                // reasonable weather. Note initialisation to 0 already done.
-                // If the driving variables are singularities, we assume
-                // no burnt area.
-
-                // Temperatures constrained akin to qsat (from the WMO)
-                if ((temperature > 338.15) || (temperature < 183.15)) {
-                    continue;
-                }
-
-                // Get the tile relative humidity using saturation routine
                 float qsat_l = qsat_wat(temperature, pstar_val);
-
                 float inferno_rhum_l = (q1p5m_tile_val / qsat_l) * 100.0;
 
-                // Relative Humidity should be constrained to 0-100
-                if ((inferno_rhum_l > 100.0) || (inferno_rhum_l < 0.0)) {
-                    continue;
-                }
-
-                if (ls_rain_val < rain_tolerance) {
-                    ls_rain_val = 0.0;
-                }
-                if (con_rain_val < rain_tolerance) {
-                    con_rain_val = 0.0;
-                }
-
-                float inferno_rain_l = ls_rain_val + con_rain_val;
-
-                // The maximum rain rate ever observed is 38mm in one minute,
-                // here we assume 0.5mm/s stops fires altogether
-                if ((inferno_rain_l > 0.5) || (inferno_rain_l < 0.0)) {
-                    continue;
-                }
-
-                // Soil moisture is a fraction of saturation
-                if ((sthu_soilt_single_val > 1.0) || (sthu_soilt_single_val < 0.0)) {
-                    continue;
-                }
-
-                // Record success!
-                checksFailed[nat_pft_3d_flat_i] = false;
+                qsat_out[nat_pft_3d_flat_i] = qsat_l;
+                inferno_rhum_out[nat_pft_3d_flat_i] = inferno_rhum_l;
             }
         }
     }
@@ -628,7 +602,8 @@ public:
         pyArray fapar_diag_pft,
         pyArray grouped_dry_bal,
         pyArray litter_pool,
-        pyArray dry_days
+        pyArray dry_days,
+        pyBoolArray checks_failed
         // -------------- End data arrays --------------
     ) {
         // Set parameters.
@@ -646,23 +621,23 @@ public:
 
         // Create buffers.
         std::array<pyArray, nData> dataArrays = {
-            t1p5m_tile,
-            q1p5m_tile,
-            pstar,
-            sthu_soilt_single,
-            frac,
-            c_soil_dpm_gb,
-            c_soil_rpm_gb,
-            canht,
-            ls_rain,
-            con_rain,
-            pop_den,
-            flash_rate,
-            fuel_build_up,
-            fapar_diag_pft,
-            grouped_dry_bal,
-            litter_pool,
-            dry_days,
+            t1p5m_tile,  // 0
+            q1p5m_tile,  // 1
+            pstar,  // 2
+            sthu_soilt_single,  // 3
+            frac,  // 4
+            c_soil_dpm_gb,  // 5
+            c_soil_rpm_gb,  // 6
+            canht,  // 7
+            ls_rain,  // 8
+            con_rain,  // 9
+            pop_den,  // 10
+            flash_rate,  // 11
+            fuel_build_up,  // 12
+            fapar_diag_pft,  // 13
+            grouped_dry_bal,  // 14
+            litter_pool,  // 15
+            dry_days,  // 16
         };
 
         for (unsigned long i = 0; i < nData; i++) {
@@ -672,24 +647,50 @@ public:
 
         outputCount = Nt * nPFT * landPts;
         outputBuffer = device->newBuffer(outputCount * dataSize, MTL::ResourceOptions());
-        checksFailedBuffer = device->newBuffer(outputCount * sizeof(bool), MTL::ResourceOptions());
 
-        calculateFailMask(
+        py::buffer_info checksFailedInfo = checks_failed.request();
+        if (checksFailedInfo.size != Nt * nPFT * landPts)
+            throw std::runtime_error("Wrong checks_failed size!");
+
+        checksFailedBuffer = device->newBuffer(
+            (bool*)checksFailedInfo.ptr,
+            Nt * nPFT * landPts * sizeof(bool),
+            MTL::ResourceOptions()
+        );
+
+        didSetData = true;
+    }
+
+    pyBoolArray get_checks_failed_mask() {
+        if (!(didSetData))
+            throw std::runtime_error("Did not set data!");
+        return pyBoolArray(outputCount, (bool*)checksFailedBuffer->contents());
+    }
+
+    std::tuple<pyArray, pyArray, pyArray> get_diagnostics() {
+        if (!(didSetData))
+            throw std::runtime_error("Did not set data!");
+
+        pyArray inferno_rain_out_arr = pyArray({Nt, landPts});
+        pyArray qsat_out_arr = pyArray({Nt, nPFT, landPts});
+        pyArray inferno_rhum_out_arr = pyArray({Nt, nPFT, landPts});
+
+        calculateDiagnostics(
             Nt,
             landPts,
             nPFT,
             nTotalPFT,
-            (float*)t1p5m_tile.request().ptr,
-            (float*)ls_rain.request().ptr,
-            (float*)con_rain.request().ptr,
-            (float*)sthu_soilt_single.request().ptr,
-            (float*)pstar.request().ptr,
-            (float*)q1p5m_tile.request().ptr,
-            (bool*)checksFailedBuffer->contents()
+            (float*)dataBuffers[0]->contents(),
+            (float*)dataBuffers[1]->contents(),
+            (float*)dataBuffers[2]->contents(),
+            (float*)dataBuffers[8]->contents(),
+            (float*)dataBuffers[9]->contents(),
+            (float*)inferno_rain_out_arr.request().ptr,
+            (float*)qsat_out_arr.request().ptr,
+            (float*)inferno_rhum_out_arr.request().ptr
         );
-        checksFailedBuffer->didModifyRange(NS::Range::Make(0, checksFailedBuffer->length()));
 
-        didSetData = true;
+        return std::make_tuple(inferno_rain_out_arr, qsat_out_arr, inferno_rhum_out_arr);
     }
 
     void set_params(

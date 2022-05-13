@@ -1371,7 +1371,7 @@ kernel void multi_timestep_inferno_ig1_flam2(
     const device float* fuel_weight [[ buffer(29) ]],
     const device bool* checks_failed [[ buffer(30) ]],
     // Thread index.
-    uint id [[ thread_position_in_grid ]]
+    uint nat_pft_3d_flat_i [[ thread_position_in_grid ]]
 ) {
     // Input arrays.
     const device float* t1p5m_tile = data_arrays.t1p5m_tile;
@@ -1399,11 +1399,12 @@ kernel void multi_timestep_inferno_ig1_flam2(
           fuel_build_up_val, fapar_diag_pft_val, dry_days_val,
           grouped_dry_bal_val, litter_pool_val, frac_val;
 
-    // Get l and i from the thread id, which is in [0, Nt * npft * land_pts).
+    // Get l and i from the thread nat_pft_3d_flat_i, which is in [0, Nt * npft * land_pts).
 
-    const int ti = id / (npft * land_pts);  // Time index
+    // Work backwards to retrieve all 3 indices.
+    const int ti = nat_pft_3d_flat_i / (npft * land_pts);  // Time index
 
-    int remainder = id - (ti * npft * land_pts);
+    int remainder = nat_pft_3d_flat_i - (ti * npft * land_pts);
     const int i = remainder / land_pts;  // PFT index
 
     remainder -= i * land_pts;
@@ -1411,8 +1412,6 @@ kernel void multi_timestep_inferno_ig1_flam2(
 
     // PFT group index.
     const int pft_group_i = get_pft_group_index(i);
-
-    int nat_pft_3d_flat_i = get_index_3d(ti, i, l, nat_pft_shape_3d);
 
     if (checks_failed[nat_pft_3d_flat_i]) return;
 
