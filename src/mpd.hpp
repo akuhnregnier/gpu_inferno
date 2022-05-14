@@ -3,97 +3,49 @@
 
 #define PI 3.14159265358979323846
 
-#include <Foundation/Foundation.hpp>
-#include <Metal/Metal.hpp>
-#include <QuartzCore/QuartzCore.hpp>
-#include <simd/simd.h>
-#include <iostream>
-#include <fstream>
-#include "loadMPDLibrary.hpp"
-#include <pybind11/pybind11.h>
-#include <pybind11/numpy.h>
 #include <array>
+#include <fstream>
+#include <iostream>
+#include <pybind11/numpy.h>
+#include <pybind11/pybind11.h>
+#include <simd/simd.h>
 #include <tuple>
+
+#include "common.hpp"
+#include "loadMPDLibrary.hpp"
+
 
 namespace py = pybind11;
 
 using pyArray = py::array_t<float, py::array::c_style>;
 
 
-class GPUCalculateMPD {
-    static const int dataSize = sizeof(float);
-
-    // NS::AutoreleasePool* autoreleasePool;
-    MTL::Device* device;
-    MTL::Library* library;
-    MTL::Function* fn;
-    MTL::ComputePipelineState* computePipelineState;
+class GPUCalculateMPD : public GPUBase {
 
     MTL::Buffer* obsBuffer;
     MTL::Buffer* predBuffer;
     MTL::Buffer* diffsBuffer;
     MTL::Buffer* diffsMaskBuffer;
 
-    MTL::CommandQueue* commandQueue;
-    MTL::CommandBuffer* commandBuffer;
-
-    MTL::ComputeCommandEncoder* computeCommandEncoder;
-
-    MTL::Size threadgroupSize;
-
     // Parameters.
     int N;
 
-    // Misc.
-    bool didRelease = false;
-
 public:
-    GPUCalculateMPD(int N) {
+    GPUCalculateMPD(int N) : GPUBase(
+        loadMPDLibrary,
+        "calculate_mpd"
+    ) {
         this->N = N;
-
-        // autoreleasePool = NS::AutoreleasePool::alloc()->init();
-        device = MTL::CreateSystemDefaultDevice();
-        commandQueue = device->newCommandQueue();
-
-        NS::Error* error = nullptr;
-
-        library = loadMPDLibrary(device);
-
-        fn = library->newFunction( NS::String::string("calculate_mpd", NS::UTF8StringEncoding) );
-
-        computePipelineState = device->newComputePipelineState( fn, &error );
-        if ( !computePipelineState )
-        {
-            __builtin_printf( "%s", error->localizedDescription()->utf8String() );
-            assert(false);
-        }
-
-        threadgroupSize = MTL::Size(computePipelineState->maxTotalThreadsPerThreadgroup(), 1, 1);
 
         obsBuffer = device->newBuffer(12 * N * dataSize, MTL::ResourceOptions());
         predBuffer = device->newBuffer(12 * N * dataSize, MTL::ResourceOptions());
         diffsBuffer = device->newBuffer(N * dataSize, MTL::ResourceOptions());
         diffsMaskBuffer = device->newBuffer(N * sizeof(bool), MTL::ResourceOptions());
-    }
 
-    void release() {
-        obsBuffer->release();
-        predBuffer->release();
-        diffsBuffer->release();
-        diffsMaskBuffer->release();
-        computePipelineState->release();
-        commandQueue->release();
-        device->release();
-
-        // autoreleasePool->release();
-
-        didRelease = true;
-    }
-
-    ~GPUCalculateMPD() {
-        if (!(didRelease)) {
-            release();
-        }
+        releaseLater(obsBuffer);
+        releaseLater(predBuffer);
+        releaseLater(diffsBuffer);
+        releaseLater(diffsMaskBuffer);
     }
 
     std::tuple<float, unsigned int> run(pyArray obs, pyArray pred) {
@@ -102,8 +54,6 @@ public:
         float* diffs;
         bool* diffsMask;
         void * obsPtr, * predPtr;
-
-        NS::AutoreleasePool* pool = NS::AutoreleasePool::alloc()->init();
 
         py::buffer_info obsInfo = obs.request();
         py::buffer_info predInfo = pred.request();
@@ -121,6 +71,9 @@ public:
         obsPtr = obsInfo.ptr;
         predPtr = predInfo.ptr;
 
+        RunParams runParams = getRunParams();
+        auto computeCommandEncoder = runParams.computeCommandEncoder;
+
         // Release Python GIL after dealing with the input Python (NumPy)
         // arrays and getting the underlying data pointer.
         py::gil_scoped_release release;
@@ -130,13 +83,6 @@ public:
 
         obsBuffer->didModifyRange(NS::Range::Make(0, obsBuffer->length()));
         predBuffer->didModifyRange(NS::Range::Make(0, predBuffer->length()));
-
-        commandBuffer = commandQueue->commandBuffer();
-        assert(commandBuffer);
-
-        computeCommandEncoder = commandBuffer->computeCommandEncoder();
-
-        computeCommandEncoder->setComputePipelineState(computePipelineState);
 
         // Inputs.
         computeCommandEncoder->setBuffer(obsBuffer, 0, 0);
@@ -149,13 +95,7 @@ public:
         computeCommandEncoder->setBuffer(diffsBuffer, 0, 3);
         computeCommandEncoder->setBuffer(diffsMaskBuffer, 0, 4);
 
-        MTL::Size gridSize = MTL::Size(N, 1, 1);
-
-        computeCommandEncoder->dispatchThreads(gridSize, threadgroupSize);
-        computeCommandEncoder->endEncoding();
-        commandBuffer->commit();
-
-        commandBuffer->waitUntilCompleted();
+        submit(N, runParams);
 
         diffs = (float*)diffsBuffer->contents();
         diffsMask = (bool*)diffsMaskBuffer->contents();
@@ -167,8 +107,6 @@ public:
                  count++;
             }
         }
-
-        pool->release();
 
         py::gil_scoped_acquire acquire;
 

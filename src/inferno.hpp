@@ -1,22 +1,18 @@
 #ifndef inferno_hpp
 #define inferno_hpp
 
-#include <stdexcept>
-#define NS_PRIVATE_IMPLEMENTATION
-#define CA_PRIVATE_IMPLEMENTATION
-#define MTL_PRIVATE_IMPLEMENTATION
-
-#include <Foundation/Foundation.hpp>
-#include <Metal/Metal.hpp>
-#include <QuartzCore/QuartzCore.hpp>
-#include <simd/simd.h>
-#include <iostream>
-#include <fstream>
-#include "loadLibrary.hpp"
-#include <pybind11/pybind11.h>
-#include <pybind11/numpy.h>
-#include <array>
 #include <algorithm>
+#include <array>
+#include <fstream>
+#include <iostream>
+#include <pybind11/numpy.h>
+#include <pybind11/pybind11.h>
+#include <simd/simd.h>
+#include <stdexcept>
+#include <tuple>
+
+#include "common.hpp"
+#include "loadLibrary.hpp"
 
 namespace py = pybind11;
 
@@ -463,38 +459,16 @@ void calculateDiagnostics(
 }
 
 
-class GPUCompute {
-    static const int dataSize = sizeof(float);
-    static const int paramSize = sizeof(int);
+class GPUInfernoBase : public GPUBase {
 
-    static const int landPts = 7771;
-    static const int nPFTGroups = 3;
-    static const int nPFT = 13;
-    static const int nTotalPFT = 17;
-
-    // NS::AutoreleasePool* autoreleasePool;
-    MTL::Device* device;
-    MTL::Library* library;
-    MTL::Function* fn;
-    MTL::ComputePipelineState* computePipelineState;
-
-    MTL::Buffer* outputBuffer;
-
+public:
     static const int nData = 17;
     static const int nParam = 22;
+
+    MTL::Buffer* outputBuffer;
     std::array<MTL::Buffer*, nData> dataBuffers;
     std::array<MTL::Buffer*, nParam> paramBuffers;
     MTL::Buffer* checksFailedBuffer;
-
-    MTL::ArgumentEncoder* argumentEncoder;
-    MTL::Buffer* argumentBuffer;
-
-    MTL::CommandQueue* commandQueue;
-    MTL::CommandBuffer* commandBuffer;
-
-    MTL::ComputeCommandEncoder* computeCommandEncoder;
-
-    MTL::Size threadgroupSize;
 
     // Parameters.
     int ignitionMethod;
@@ -503,92 +477,49 @@ class GPUCompute {
     int fuelBuildUpMethod;
     int includeTemperature;
     int Nt;
-    long outputCount;
+
+    MTL::ArgumentEncoder* argumentEncoder;
+    MTL::Buffer* argumentBuffer;
 
     // Misc.
     bool didSetData = false;
     bool didSetParams = false;
-    bool didRelease = false;
 
     MTL::Buffer* createBufferFromPyArray(pyArray array) {
         py::buffer_info buf = array.request();
         return device->newBuffer(static_cast<float *>(buf.ptr), buf.shape[0] * dataSize, MTL::ResourceOptions());
     }
 
-public:
-    GPUCompute() {
-        // autoreleasePool = NS::AutoreleasePool::alloc()->init();
-        device = MTL::CreateSystemDefaultDevice();
-        commandQueue = device->newCommandQueue();
-
-        NS::Error* error = nullptr;
-
-        library = loadLibrary(device);
-
-        fn = library->newFunction( NS::String::string("multi_timestep_inferno_ig1_flam2", NS::UTF8StringEncoding) );
-
-        argumentEncoder = fn->newArgumentEncoder(7);
-        argumentBuffer = device->newBuffer(argumentEncoder->encodedLength(), MTL::ResourceOptions());
-        argumentEncoder->setArgumentBuffer(argumentBuffer, 0);
-
-        computePipelineState = device->newComputePipelineState( fn, &error );
-        if ( !computePipelineState )
-        {
-            __builtin_printf( "%s", error->localizedDescription()->utf8String() );
-            assert(false);
-        }
-
-        threadgroupSize = MTL::Size(computePipelineState->maxTotalThreadsPerThreadgroup(), 1, 1);
-
+    GPUInfernoBase(
+        MTL::Library* (*loadLibraryFunc)(MTL::Device*),
+        const std::string& kernelName
+    ) : GPUBase(
+        loadLibraryFunc,
+        kernelName
+    ) {
         // Create parameter buffers for later reuse.
         for (unsigned long i = 0; i < nParam; i++) {
             paramBuffers[i] = device->newBuffer(nPFTGroups * dataSize, MTL::ResourceOptions());
-        }
-
-    }
-
-    void release() {
-        for (unsigned long i = 0; i < nParam; i++) {
-            paramBuffers[i]->release();
-        }
-
-        if (didSetData) {
-            for (unsigned long i = 0; i < nData; i++) {
-                dataBuffers[i]->release();
-            }
-            outputBuffer->release();
-            checksFailedBuffer->release();
-        }
-        argumentBuffer->release();
-        argumentEncoder->release();
-        computePipelineState->release();
-        commandQueue->release();
-        device->release();
-
-        // autoreleasePool->release();
-
-        didRelease = true;
-    }
-
-    ~GPUCompute() {
-        if (!(didRelease)) {
-            release();
+            releaseLater(paramBuffers[i]);
         }
     }
+
+    virtual void setOutputBuffer() = 0;
+
+    virtual void checkNt() = 0;
 
     void set_data(
-        int _ignitionMethod,
-        int _flammabilityMethod,
-        int _drynessMethod,
-        int _fuelBuildUpMethod,
-        int _includeTemperature,
-        int _Nt,  // i.e. <data>.shape[0].
+        int ignitionMethod,
+        int flammabilityMethod,
+        int drynessMethod,
+        int fuelBuildUpMethod,
+        int includeTemperature,
+        int Nt,  // i.e. <data>.shape[0].
         // -------------- Start data arrays --------------
         // Input arrays.
         pyArray t1p5m_tile,
         pyArray q1p5m_tile,
         pyArray pstar,
-        // XXX NOTE - This is with a single soil layer selected!
         pyArray sthu_soilt_single,
         pyArray frac,
         pyArray c_soil_dpm_gb,
@@ -607,13 +538,14 @@ public:
         // -------------- End data arrays --------------
     ) {
         // Set parameters.
-        ignitionMethod = _ignitionMethod;
-        flammabilityMethod = _flammabilityMethod;
-        drynessMethod = _drynessMethod;
-        fuelBuildUpMethod = _fuelBuildUpMethod;
-        includeTemperature = _includeTemperature;
-        Nt = _Nt;
+        this->ignitionMethod = ignitionMethod;
+        this->flammabilityMethod = flammabilityMethod;
+        this->drynessMethod = drynessMethod;
+        this->fuelBuildUpMethod = fuelBuildUpMethod;
+        this->includeTemperature = includeTemperature;
+        this->Nt = Nt;
 
+        checkNt();
         if (ignitionMethod != 1)
             throw std::runtime_error("Ignition method has to be 1!");
         if (flammabilityMethod != 2)
@@ -643,10 +575,8 @@ public:
         for (unsigned long i = 0; i < nData; i++) {
             dataBuffers[i] = createBufferFromPyArray(dataArrays[i]);
             argumentEncoder->setBuffer(dataBuffers[i], 0, i);
+            releaseLater(dataBuffers[i]);
         }
-
-        outputCount = Nt * nPFT * landPts;
-        outputBuffer = device->newBuffer(outputCount * dataSize, MTL::ResourceOptions());
 
         py::buffer_info checksFailedInfo = checks_failed.request();
         if (checksFailedInfo.size != Nt * nPFT * landPts)
@@ -654,9 +584,12 @@ public:
 
         checksFailedBuffer = device->newBuffer(
             (bool*)checksFailedInfo.ptr,
-            Nt * nPFT * landPts * sizeof(bool),
+            Nt * nPFT * landPts * boolSize,
             MTL::ResourceOptions()
         );
+        releaseLater(checksFailedBuffer);
+
+        setOutputBuffer();
 
         didSetData = true;
     }
@@ -664,7 +597,7 @@ public:
     pyBoolArray get_checks_failed_mask() {
         if (!(didSetData))
             throw std::runtime_error("Did not set data!");
-        return pyBoolArray(outputCount, (bool*)checksFailedBuffer->contents());
+        return pyBoolArray(Nt * nPFT * landPts, (bool*)checksFailedBuffer->contents());
     }
 
     std::tuple<pyArray, pyArray, pyArray> get_diagnostics() {
@@ -754,22 +687,49 @@ public:
 
         didSetParams = true;
     }
+};
+
+
+class GPUCompute final : public GPUInfernoBase {
+
+public:
+    GPUCompute() : GPUInfernoBase(
+        loadLibrary,
+        "multi_timestep_inferno_ig1_flam2"
+    ) {
+        argumentEncoder = fn->newArgumentEncoder(7);
+        argumentBuffer = device->newBuffer(argumentEncoder->encodedLength(), MTL::ResourceOptions());
+        argumentEncoder->setArgumentBuffer(argumentBuffer, 0);
+
+        releaseLater(argumentBuffer);
+        releaseLater(argumentEncoder);
+    }
+
+    void setOutputBuffer() override {
+        if (Nt == 0)
+            throw std::runtime_error("Nt is not set (=0).");
+        outputBuffer = device->newBuffer(Nt * nPFT * landPts * dataSize, MTL::ResourceOptions());
+        releaseLater(outputBuffer);
+    }
+
+    void checkNt() override { }
 
     void run(pyArray out) {
-        if (!(didSetParams && didSetData)) {
-            if (!(didSetData)) __builtin_printf("Did not set data.");
-            if (!(didSetParams)) __builtin_printf("Did not set params.");
-            assert(false);
-        }
+        if (!(didSetData))
+            throw std::runtime_error("Did not set data.");
+        if (!(didSetParams))
+            throw std::runtime_error("Did not set params.");
 
-        NS::AutoreleasePool* pool = NS::AutoreleasePool::alloc()->init();
+        py::buffer_info outInfo = out.request();
+        if (outInfo.ndim != 2)
+            throw std::runtime_error("Incompatible out dimension!");
+        if ((outInfo.shape[0] != Nt) || (outInfo.shape[1] != landPts))
+            throw std::runtime_error("Expected out dimensions (Nt, landPts)!");
 
-        commandBuffer = commandQueue->commandBuffer();
-        assert(commandBuffer);
+        RunParams runParams = getRunParams();
+        auto computeCommandEncoder = runParams.computeCommandEncoder;
 
-        computeCommandEncoder = commandBuffer->computeCommandEncoder();
-
-        computeCommandEncoder->setComputePipelineState(computePipelineState);
+        py::gil_scoped_release release;
 
         // Output.
         computeCommandEncoder->setBuffer(outputBuffer, 0, 0);
@@ -795,15 +755,10 @@ public:
 
         computeCommandEncoder->setBuffer(checksFailedBuffer, 0, 30);
 
-        MTL::Size gridSize = MTL::Size(Nt * landPts * nPFT, 1, 1);
+        submit(Nt * landPts * nPFT, runParams);
 
-        computeCommandEncoder->dispatchThreads(gridSize, threadgroupSize);
-        computeCommandEncoder->endEncoding();
-        commandBuffer->commit();
-
-        commandBuffer->waitUntilCompleted();
-
-        pool->release();
+        // Acquire GIL before using Python array below.
+        py::gil_scoped_acquire acquire;
 
         // Perform sum over PFT axis.
         //
@@ -816,12 +771,6 @@ public:
 
         // Note that multiplication by frac already occurs within the kernel!
         float* ba_frac = (float*)outputBuffer->contents();
-        py::buffer_info outInfo = out.request();
-        if (outInfo.ndim != 2)
-            throw std::runtime_error("Incompatible out dimension!");
-        if ((outInfo.shape[0] != Nt) || (outInfo.shape[1] != landPts))
-            throw std::runtime_error("Expected out dimensions (Nt, landPts)!");
-
         auto outR = out.mutable_unchecked<2>();
 
         // Sum over PFT axis.

@@ -3,95 +3,46 @@
 
 #define PI 3.14159265358979323846
 
-#include <Foundation/Foundation.hpp>
-#include <Metal/Metal.hpp>
-#include <QuartzCore/QuartzCore.hpp>
-#include <simd/simd.h>
-#include <iostream>
-#include <fstream>
-#include "loadPhaseLibrary.hpp"
-#include <pybind11/pybind11.h>
-#include <pybind11/numpy.h>
 #include <array>
+#include <fstream>
+#include <iostream>
+#include <pybind11/numpy.h>
+#include <pybind11/pybind11.h>
+#include <simd/simd.h>
+
+#include "common.hpp"
+#include "loadPhaseLibrary.hpp"
 
 namespace py = pybind11;
 
 using pyArray = py::array_t<float, py::array::c_style>;
 
 
-class GPUCalculatePhase {
-    static const int dataSize = sizeof(float);
-
-    // NS::AutoreleasePool* autoreleasePool;
-    MTL::Device* device;
-    MTL::Library* library;
-    MTL::Function* fn;
-    MTL::ComputePipelineState* computePipelineState;
+class GPUCalculatePhase : GPUBase {
 
     MTL::Buffer* inputBuffer;
     MTL::Buffer* outputBuffer;
 
-    MTL::CommandQueue* commandQueue;
-    MTL::CommandBuffer* commandBuffer;
-
-    MTL::ComputeCommandEncoder* computeCommandEncoder;
-
-    MTL::Size threadgroupSize;
-
     // Parameters.
     int N;
 
-    // Misc.
-    bool didRelease = false;
-
 public:
-    GPUCalculatePhase(int N) {
+    GPUCalculatePhase(int N) : GPUBase (
+        loadPhaseLibrary,
+        "calculate_phase"
+    ) {
         this->N = N;
-
-        // autoreleasePool = NS::AutoreleasePool::alloc()->init();
-        device = MTL::CreateSystemDefaultDevice();
-        commandQueue = device->newCommandQueue();
-
-        NS::Error* error = nullptr;
-
-        library = loadPhaseLibrary(device);
-
-        fn = library->newFunction( NS::String::string("calculate_phase", NS::UTF8StringEncoding) );
-
-        computePipelineState = device->newComputePipelineState( fn, &error );
-        if ( !computePipelineState )
-        {
-            __builtin_printf( "%s", error->localizedDescription()->utf8String() );
-            assert(false);
-        }
-
-        threadgroupSize = MTL::Size(computePipelineState->maxTotalThreadsPerThreadgroup(), 1, 1);
 
         inputBuffer = device->newBuffer(12 * N * dataSize, MTL::ResourceOptions());
         outputBuffer = device->newBuffer(N * dataSize, MTL::ResourceOptions());
-    }
 
-    void release() {
-        inputBuffer->release();
-        outputBuffer->release();
-        computePipelineState->release();
-        commandQueue->release();
-        device->release();
-
-        // NOTE - calling this here causes issues in certain scenarios. Is it not needed at all?
-        // autoreleasePool->release();
-
-        didRelease = true;
-    }
-
-    ~GPUCalculatePhase() {
-        if (!(didRelease)) {
-            release();
-        }
+        releaseLater(inputBuffer);
+        releaseLater(outputBuffer);
     }
 
     pyArray run(pyArray x) {
-        NS::AutoreleasePool* pool = NS::AutoreleasePool::alloc()->init();
+        RunParams runParams = getRunParams();
+        auto computeCommandEncoder = runParams.computeCommandEncoder;
 
         py::buffer_info xBuf = x.request();
         if (xBuf.ndim != 2)
@@ -106,13 +57,6 @@ public:
         memcpy(inputBuffer->contents(), xBuf.ptr, xBuf.size * dataSize);
         inputBuffer->didModifyRange(NS::Range::Make(0, inputBuffer->length()));
 
-        commandBuffer = commandQueue->commandBuffer();
-        assert(commandBuffer);
-
-        computeCommandEncoder = commandBuffer->computeCommandEncoder();
-
-        computeCommandEncoder->setComputePipelineState(computePipelineState);
-
         // Output.
         computeCommandEncoder->setBuffer(outputBuffer, 0, 0);
 
@@ -122,15 +66,7 @@ public:
         // N.
         computeCommandEncoder->setBytes(&N, sizeof(int), 2);
 
-        MTL::Size gridSize = MTL::Size(N, 1, 1);
-
-        computeCommandEncoder->dispatchThreads(gridSize, threadgroupSize);
-        computeCommandEncoder->endEncoding();
-        commandBuffer->commit();
-
-        commandBuffer->waitUntilCompleted();
-
-        pool->release();
+        submit(N, runParams);
 
         return pyArray(N, (float*)outputBuffer->contents());
     }

@@ -1,3 +1,15 @@
+// ---------------------------------
+// Included ONCE here - needs to be
+// defined at the earliest point in
+// the program.
+#define NS_PRIVATE_IMPLEMENTATION
+#define CA_PRIVATE_IMPLEMENTATION
+#define MTL_PRIVATE_IMPLEMENTATION
+#include <Foundation/Foundation.hpp>
+#include <Metal/Metal.hpp>
+#include <QuartzCore/QuartzCore.hpp>
+// ---------------------------------
+
 #include "inferno.hpp"
 #include "infernoAvg.hpp"
 #include "phase.hpp"
@@ -127,12 +139,12 @@ PYBIND11_MODULE(py_gpu_inferno, m) {
     py::class_<GPUCompute>(m, "GPUCompute")
         .def(py::init<>())
         .def("set_data", &GPUCompute::set_data, "Set input data.",
-            py::arg("_ignitionMethod"),
-            py::arg("_flammabilityMethod"),
-            py::arg("_drynessMethod"),
-            py::arg("_fuelBuildUpMethod"),
-            py::arg("_includeTemperature"),
-            py::arg("_Nt"),
+            py::arg("ignitionMethod"),
+            py::arg("flammabilityMethod"),
+            py::arg("drynessMethod"),
+            py::arg("fuelBuildUpMethod"),
+            py::arg("includeTemperature"),
+            py::arg("Nt"),
             py::arg("t1p5m_tile"),
             py::arg("q1p5m_tile"),
             py::arg("pstar"),
@@ -228,12 +240,12 @@ PYBIND11_MODULE(py_gpu_inferno, m) {
             py::arg("out")
         )
         .def("set_data", &GPUInfernoAvg::set_data, "Set input data.",
-            py::arg("_ignitionMethod"),
-            py::arg("_flammabilityMethod"),
-            py::arg("_drynessMethod"),
-            py::arg("_fuelBuildUpMethod"),
-            py::arg("_includeTemperature"),
-            py::arg("_Nt"),
+            py::arg("ignitionMethod"),
+            py::arg("flammabilityMethod"),
+            py::arg("drynessMethod"),
+            py::arg("fuelBuildUpMethod"),
+            py::arg("includeTemperature"),
+            py::arg("Nt"),
             py::arg("t1p5m_tile"),
             py::arg("q1p5m_tile"),
             py::arg("pstar"),

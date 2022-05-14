@@ -18,6 +18,7 @@ find_library(APPLE_FWK_METAL Metal REQUIRED)
 add_subdirectory(pybind11)
 pybind11_add_module(${PROJECT_NAME}
     src/pybind.cpp
+    src/common.hpp
     src/consAvg.hpp
     src/consAvgNoMask.hpp
     src/flam.hpp
@@ -28,6 +29,7 @@ pybind11_add_module(${PROJECT_NAME}
     src/loadFlam2Library.hpp
     src/loadInfAvgLibrary.hpp
     src/loadLibrary.hpp
+    src/loadLibraryCommon.hpp
     src/loadMPDLibrary.hpp
     src/loadPhaseLibrary.hpp
     src/mpd.hpp

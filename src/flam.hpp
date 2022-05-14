@@ -1,82 +1,36 @@
 #ifndef flam_hpp
 #define flam_hpp
 
-#include <Foundation/Foundation.hpp>
-#include <Metal/Metal.hpp>
-#include <QuartzCore/QuartzCore.hpp>
-#include <simd/simd.h>
-#include <iostream>
-#include <fstream>
-#include "loadFlam2Library.hpp"
-#include <pybind11/pybind11.h>
-#include <pybind11/numpy.h>
 #include <array>
+#include <fstream>
+#include <iostream>
+#include <pybind11/numpy.h>
+#include <pybind11/pybind11.h>
+#include <simd/simd.h>
 #include <tuple>
 
-class GPUFlam2 {
-    static const int dataSize = sizeof(float);
-    static const int intSize = sizeof(int);
+#include "common.hpp"
+#include "loadFlam2Library.hpp"
 
-    MTL::Device* device;
-    MTL::Library* library;
-    MTL::Function* fn;
-    MTL::ComputePipelineState* computePipelineState;
+
+class GPUFlam2 : public GPUBase {
 
     MTL::Buffer* outBuffer;
     MTL::Buffer* inFloatBuffer;
     MTL::Buffer* inIntBuffer;
 
-    MTL::CommandQueue* commandQueue;
-    MTL::CommandBuffer* commandBuffer;
-
-    MTL::ComputeCommandEncoder* computeCommandEncoder;
-
-    MTL::Size threadgroupSize;
-
-    // Misc.
-    bool didRelease = false;
-
 public:
-    GPUFlam2() {
-        device = MTL::CreateSystemDefaultDevice();
-        commandQueue = device->newCommandQueue();
-
-        NS::Error* error = nullptr;
-
-        library = loadFlam2Library(device);
-
-        fn = library->newFunction( NS::String::string("calc_flam_flam2_kernel", NS::UTF8StringEncoding) );
-
-        computePipelineState = device->newComputePipelineState( fn, &error );
-        if ( !computePipelineState )
-        {
-            __builtin_printf( "%s", error->localizedDescription()->utf8String() );
-            assert(false);
-        }
-
-        threadgroupSize = MTL::Size(computePipelineState->maxTotalThreadsPerThreadgroup(), 1, 1);
-
+    GPUFlam2() : GPUBase(
+        loadFlam2Library,
+        "calc_flam_flam2_kernel"
+    ) {
         outBuffer = device->newBuffer(1 * dataSize, MTL::ResourceOptions());
         inFloatBuffer = device->newBuffer(28 * dataSize, MTL::ResourceOptions());
-        inIntBuffer = device->newBuffer(3 * intSize, MTL::ResourceOptions());
-    }
+        inIntBuffer = device->newBuffer(3 * paramSize, MTL::ResourceOptions());
 
-    void release() {
-        outBuffer->release();
-        inFloatBuffer->release();
-        inIntBuffer->release();
-
-        computePipelineState->release();
-        commandQueue->release();
-        device->release();
-
-        didRelease = true;
-    }
-
-    ~GPUFlam2() {
-        if (!(didRelease)) {
-            release();
-        }
+        releaseLater(outBuffer);
+        releaseLater(inFloatBuffer);
+        releaseLater(inIntBuffer);
     }
 
     float run(
@@ -112,7 +66,8 @@ public:
         float temperature_weight,
         float fuel_weight
     ) {
-        NS::AutoreleasePool* pool = NS::AutoreleasePool::alloc()->init();
+        RunParams runParams = getRunParams();
+        auto computeCommandEncoder = runParams.computeCommandEncoder;
 
         // Update parameters.
 
@@ -156,25 +111,12 @@ public:
         inIntBuffer->didModifyRange(NS::Range::Make(0, inIntBuffer->length()));
 
         // Run.
-
-        commandBuffer = commandQueue->commandBuffer();
-        assert(commandBuffer);
-        computeCommandEncoder = commandBuffer->computeCommandEncoder();
-        computeCommandEncoder->setComputePipelineState(computePipelineState);
-
         computeCommandEncoder->setBuffer(outBuffer, 0, 0);
         computeCommandEncoder->setBuffer(inFloatBuffer, 0, 1);
         computeCommandEncoder->setBuffer(inIntBuffer, 0, 2);
 
         // Run for the single set of parameters given.
-        MTL::Size gridSize = MTL::Size(1, 1, 1);
-
-        computeCommandEncoder->dispatchThreads(gridSize, threadgroupSize);
-        computeCommandEncoder->endEncoding();
-        commandBuffer->commit();
-
-        commandBuffer->waitUntilCompleted();
-        pool->release();
+        submit(1, runParams);
         return ((float*)outBuffer->contents())[0];
     }
 };

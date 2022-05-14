@@ -1,37 +1,25 @@
 #ifndef consAvg_hpp
 #define consAvg_hpp
 
-#include <Foundation/Foundation.hpp>
-#include <Metal/Metal.hpp>
-#include <QuartzCore/QuartzCore.hpp>
-#include <simd/simd.h>
-#include <iostream>
-#include <fstream>
-#include "loadConsAvgLibrary.hpp"
-#include <pybind11/pybind11.h>
-#include <pybind11/numpy.h>
 #include <array>
+#include <fstream>
+#include <iostream>
+#include <pybind11/numpy.h>
+#include <pybind11/pybind11.h>
+#include <simd/simd.h>
+#include <tuple>
+
+#include "common.hpp"
+#include "loadConsAvgLibrary.hpp"
+
 
 namespace py = pybind11;
 
 using pyArray = py::array_t<float, py::array::c_style>;
 using pyBoolArray = py::array_t<bool, py::array::c_style>;
 
-class GPUConsAvg {
-    static const int dataSize = sizeof(float);
-    static const int boolSize = sizeof(bool);
 
-    MTL::Device* device;
-    MTL::Library* library;
-    MTL::Function* fn;
-    MTL::ComputePipelineState* computePipelineState;
-
-    MTL::CommandQueue* commandQueue;
-    MTL::CommandBuffer* commandBuffer;
-
-    MTL::ComputeCommandEncoder* computeCommandEncoder;
-
-    MTL::Size threadgroupSize;
+class GPUConsAvg : public GPUBase {
 
     // Buffers.
     MTL::Buffer* inDataBuffer;
@@ -43,30 +31,12 @@ class GPUConsAvg {
     // Parameters.
     int M, N, L;
 
-    // Misc.
-    bool didRelease = false;
-
 public:
-    GPUConsAvg(int L, pyArray weights) {
+    GPUConsAvg(int L, pyArray weights) : GPUBase(
+        loadConsAvgLibrary,
+        "cons_avg"
+    ) {
         this->L = L;
-
-        device = MTL::CreateSystemDefaultDevice();
-        commandQueue = device->newCommandQueue();
-
-        NS::Error* error = nullptr;
-
-        library = loadConsAvgLibrary(device);
-
-        fn = library->newFunction( NS::String::string("cons_avg", NS::UTF8StringEncoding) );
-
-        computePipelineState = device->newComputePipelineState( fn, &error );
-        if ( !computePipelineState )
-        {
-            __builtin_printf( "%s", error->localizedDescription()->utf8String() );
-            assert(false);
-        }
-
-        threadgroupSize = MTL::Size(computePipelineState->maxTotalThreadsPerThreadgroup(), 1, 1);
 
         // Store weights in buffer.
         py::buffer_info weightsInfo = weights.request();
@@ -85,30 +55,15 @@ public:
 
         memcpy(weightsBuffer->contents(), weightsInfo.ptr, weightsInfo.size * dataSize);
         weightsBuffer->didModifyRange(NS::Range::Make(0, weightsBuffer->length()));
-    }
 
-    void release() {
-        inDataBuffer->release();
-        inMaskBuffer->release();
-        weightsBuffer->release();
-        outDataBuffer->release();
-        outMaskBuffer->release();
-        computePipelineState->release();
-        commandQueue->release();
-        device->release();
-
-        didRelease = true;
-    }
-
-    ~GPUConsAvg() {
-        if (!(didRelease)) {
-            release();
-        }
+        releaseLater(inDataBuffer);
+        releaseLater(inMaskBuffer);
+        releaseLater(weightsBuffer);
+        releaseLater(outDataBuffer);
+        releaseLater(outMaskBuffer);
     }
 
     std::tuple<pyArray, pyBoolArray> run(pyArray inData, pyBoolArray inMask) {
-        NS::AutoreleasePool* pool = NS::AutoreleasePool::alloc()->init();
-
         py::buffer_info inDataInfo = inData.request();
         py::buffer_info inMaskInfo = inMask.request();
         if (inDataInfo.shape != inMaskInfo.shape)
@@ -121,6 +76,9 @@ public:
         void* inDataPtr = inDataInfo.ptr;
         void* inMaskPtr = inMaskInfo.ptr;
 
+        RunParams runParams = getRunParams();
+        auto computeCommandEncoder = runParams.computeCommandEncoder;
+
         // Release Python GIL after dealing with the input Python (NumPy)
         // arrays and getting the underlying data pointer.
         py::gil_scoped_release release;
@@ -130,13 +88,6 @@ public:
 
         memcpy(inMaskBuffer->contents(), inMaskPtr, M * L * boolSize);
         inMaskBuffer->didModifyRange(NS::Range::Make(0, inMaskBuffer->length()));
-
-        commandBuffer = commandQueue->commandBuffer();
-        assert(commandBuffer);
-
-        computeCommandEncoder = commandBuffer->computeCommandEncoder();
-
-        computeCommandEncoder->setComputePipelineState(computePipelineState);
 
         // Outputs.
         computeCommandEncoder->setBuffer(outDataBuffer, 0, 0);
@@ -152,15 +103,7 @@ public:
         computeCommandEncoder->setBytes(&N, sizeof(int), 6);
         computeCommandEncoder->setBytes(&L, sizeof(int), 7);
 
-        MTL::Size gridSize = MTL::Size(N * L, 1, 1);
-
-        computeCommandEncoder->dispatchThreads(gridSize, threadgroupSize);
-        computeCommandEncoder->endEncoding();
-        commandBuffer->commit();
-
-        commandBuffer->waitUntilCompleted();
-
-        pool->release();
+        submit(N * L, runParams);
 
         py::gil_scoped_acquire acquire;
 
@@ -169,7 +112,6 @@ public:
             pyBoolArray(N * L, (bool*)outMaskBuffer->contents())
         );
     }
-
 };
 
 #endif
