@@ -18,8 +18,8 @@ MTL::Library* loadLibrary(MTL::Device* device) {
             + calc_c_comps_triffid_leaf
             + calcIgnitions
             + sigmoid
-            + calcFlamGeneral
             + calcFlam2
+            + calcFlamGeneral
             + calcBurntArea
             + getIndexFuncs
             + setGetElementFuncs

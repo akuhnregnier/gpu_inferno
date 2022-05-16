@@ -621,6 +621,7 @@ inline float sigmoid(float x, float factor, float centre, float shape) {
 )";
 
 
+// NOTE Need to include `calcFlam2` above `calcFlamGeneral` in order to use `calcFlamGeneral`.
 std::string calcFlamGeneral = R"(
 float calc_flam(
     float temp_l,
@@ -681,8 +682,7 @@ float calc_flam(
     // flam_l
     //   // The flammability of the cell
 
-    float TsbyT_l, Z_l, f_rhum_l, rain_rate, flammability, dry_factor,
-        f_sm_l, fuel_factor, fapar_sigmoid, weighted_temperature_sigmoid;
+    float TsbyT_l, Z_l, f_rhum_l, rain_rate, flammability, f_sm_l;
 
     // Z_l,
     //   // Component of the Goff-Gratch saturation vapor pressure
@@ -733,58 +733,38 @@ float calc_flam(
     }
     else if (flammability_method == 2) {
         // New calculation, based on FAPAR (and derived fuel_build_up).
-
-        if (dryness_method == 1) {
-            dry_factor = sigmoid(dry_days, dry_day_factor, dry_day_centre, dry_day_shape);
-        }
-        else if (dryness_method == 2) {
-            dry_factor = sigmoid(dry_bal, dry_bal_factor, dry_bal_centre, dry_bal_shape);
-        }
-        else {
-            // raise ValueError("Unknown 'dryness_method'.");
-            dry_factor = -1;
-        }
-
-        if (fuel_build_up_method == 1) {
-            fuel_factor = sigmoid(
-                fuel_build_up,
-                fuel_build_up_factor,
-                fuel_build_up_centre,
-                fuel_build_up_shape
-            );
-        }
-        else if (fuel_build_up_method == 2) {
-            fuel_factor = sigmoid(
-                litter_pool, litter_pool_factor, litter_pool_centre, litter_pool_shape
-            );
-        }
-        else {
-            // raise ValueError("Unknown 'fuel_build_up_method'.")
-            fuel_factor = -1.0;
-        }
-
-        if (include_temperature == 1) {
-            float temperature_sigmoid = sigmoid(
-                temp_l, temperature_factor, temperature_centre, temperature_shape
-            );
-            weighted_temperature_sigmoid = (1 + temperature_weight * (temperature_sigmoid - 1));
-        }
-        else if (include_temperature == 0) {
-            weighted_temperature_sigmoid = 1.0;
-        }
-        else {
-            // raise ValueError("Unknown 'include_temperature'.")
-            weighted_temperature_sigmoid = -1.0;
-        }
-
-        fapar_sigmoid = sigmoid(fapar, fapar_factor, fapar_centre, fapar_shape);
-
-        // Convert fuel build-up index to flammability factor.
-        flammability = (
-            (1 + dryness_weight * (dry_factor - 1))
-            * weighted_temperature_sigmoid
-            * (1 + fuel_weight * (fuel_factor - 1))
-            * (1 + fapar_weight * (fapar_sigmoid - 1))
+        flammability = calc_flam_flam2(
+            temp_l,
+            fuel_build_up,
+            fapar,
+            dry_days,
+            dryness_method,
+            fuel_build_up_method,
+            fapar_factor,
+            fapar_centre,
+            fapar_shape,
+            fuel_build_up_factor,
+            fuel_build_up_centre,
+            fuel_build_up_shape,
+            temperature_factor,
+            temperature_centre,
+            temperature_shape,
+            dry_day_factor,
+            dry_day_centre,
+            dry_day_shape,
+            dry_bal,
+            dry_bal_factor,
+            dry_bal_centre,
+            dry_bal_shape,
+            litter_pool,
+            litter_pool_factor,
+            litter_pool_centre,
+            litter_pool_shape,
+            include_temperature,
+            fapar_weight,
+            dryness_weight,
+            temperature_weight,
+            fuel_weight
         );
     }
     else {
