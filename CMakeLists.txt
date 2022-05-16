@@ -24,10 +24,12 @@ pybind11_add_module(${PROJECT_NAME}
     src/flam.hpp
     src/inferno.hpp
     src/infernoAvg.hpp
+    src/infernoAvgScore.hpp
     src/loadConsAvgLibrary.hpp
     src/loadConsAvgNoMaskLibrary.hpp
     src/loadFlam2Library.hpp
     src/loadInfAvgLibrary.hpp
+    src/loadInfAvgScoreLibrary.hpp
     src/loadLibrary.hpp
     src/loadLibraryCommon.hpp
     src/loadMPDLibrary.hpp

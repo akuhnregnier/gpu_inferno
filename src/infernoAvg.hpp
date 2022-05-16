@@ -10,7 +10,6 @@
 #include <simd/simd.h>
 #include <stdexcept>
 
-#include "common.hpp"
 #include "inferno.hpp"
 #include "loadInfAvgLibrary.hpp"
 
@@ -20,8 +19,9 @@ using pyArray = py::array_t<float, py::array::c_style>;
 using pyBoolArray = py::array_t<bool, py::array::c_style>;
 
 
-class GPUInfernoAvg final : public GPUInfernoBase {
+class GPUInfernoAvgBase : public GPUInfernoBase {
 
+public:
     // Cons Avg.
     int M, N, L;
     MTL::Buffer* weightsBuffer;
@@ -29,10 +29,14 @@ class GPUInfernoAvg final : public GPUInfernoBase {
     MTL::ArgumentEncoder* consAvgArgumentEncoder;
     MTL::Buffer* consAvgArgumentBuffer;
 
-public:
-    GPUInfernoAvg(int L, pyArray weights) : GPUInfernoBase(
-            loadInfAvgLibrary,
-            "inferno_cons_avg_ig1_flam2"
+    GPUInfernoAvgBase(
+        int L,
+        pyArray weights,
+        MTL::Library* (*loadLibraryFunc)(MTL::Device*),
+        const std::string& kernelName
+    ) : GPUInfernoBase(
+        loadLibraryFunc,
+        kernelName
     ) {
         if (L != landPts)
             throw std::runtime_error("Not implemented!");
@@ -55,6 +59,9 @@ public:
 
         M = weightsInfo.shape[0];
         N = weightsInfo.shape[1];
+
+        if (N != 12)
+            throw std::runtime_error("N (i.e. Nout) != 12 not supported!");
 
         weightsBuffer = device->newBuffer(M * N * dataSize, MTL::ResourceOptions());
 
@@ -81,15 +88,28 @@ public:
         releaseLater(consAvgArgumentBuffer);
     }
 
+    void checkNt() override {
+        if (Nt != M)
+            throw std::runtime_error("Nt != M");
+    }
+};
+
+
+class GPUInfernoAvg final : public GPUInfernoAvgBase {
+
+public:
+    GPUInfernoAvg(int L, pyArray weights) : GPUInfernoAvgBase(
+            L,
+            weights,
+            loadInfAvgLibrary,
+            "inferno_cons_avg_ig1_flam2"
+    ) { }
+
     void setOutputBuffer() override {
         if (N == 0)
             throw std::runtime_error("N is not set (=0).");
         outputBuffer = device->newBuffer(N * landPts * dataSize, MTL::ResourceOptions());
-    }
-
-    void checkNt() override {
-        if (Nt != M)
-            throw std::runtime_error("Nt != M");
+        releaseLater(outputBuffer);
     }
 
     void run(pyArray out) {

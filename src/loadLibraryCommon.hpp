@@ -1109,7 +1109,6 @@ kernel void multi_timestep_inferno_general(
     const device float* t1p5m_tile = data_arrays.t1p5m_tile;
     const device float* q1p5m_tile = data_arrays.q1p5m_tile;
     const device float* pstar = data_arrays.pstar;
-    // XXX NOTE - This is with a single soil layer selected!
     const device float* sthu_soilt_single = data_arrays.sthu_soilt_single;
     const device float* frac = data_arrays.frac;
     const device float* c_soil_dpm_gb = data_arrays.c_soil_dpm_gb;
@@ -1383,7 +1382,6 @@ kernel void multi_timestep_inferno_ig1_flam2(
     const device float* t1p5m_tile = data_arrays.t1p5m_tile;
     const device float* q1p5m_tile = data_arrays.q1p5m_tile;
     const device float* pstar = data_arrays.pstar;
-    // XXX NOTE - This is with a single soil layer selected!
     const device float* sthu_soilt_single = data_arrays.sthu_soilt_single;
     const device float* frac = data_arrays.frac;
     const device float* c_soil_dpm_gb = data_arrays.c_soil_dpm_gb;
@@ -1484,6 +1482,8 @@ kernel void multi_timestep_inferno_ig1_flam2(
 
 
 std::string phaseConsts = R"(
+constant float ARCSINH_FACTOR = 1e6;
+
 constant float sinThetas[12] = {
     0.0f,
     0.49999999999999994f,
@@ -1779,6 +1779,18 @@ struct ConsAvgData {
 )";
 
 
+std::string ConsAvgObsDataStruct = R"(
+struct ConsAvgObsData {
+    // Input arrays.
+    const device float* weights [[ id(0) ]];
+    const device int* params [[ id(1) ]];  // M, N, L
+    const device float* obs [[ id(2) ]];  // 12, L
+    const device float* crop [[ id(3) ]];  // 12, L
+    const device float* opt_params [[ id(4) ]];  // overall_scale, crop_f
+};
+)";
+
+
 std::string calculateWeightedBA = R"(
 inline float calculate_weighted_ba(
     int pft_i,
@@ -1909,7 +1921,6 @@ kernel void inferno_cons_avg_ig1_flam2(
     const device float* t1p5m_tile = data_arrays.t1p5m_tile;
     const device float* q1p5m_tile = data_arrays.q1p5m_tile;
     const device float* pstar = data_arrays.pstar;
-    // XXX NOTE - This is with a single soil layer selected!
     const device float* sthu_soilt_single = data_arrays.sthu_soilt_single;
     const device float* frac = data_arrays.frac;
     const device float* c_soil_dpm_gb = data_arrays.c_soil_dpm_gb;
@@ -1924,12 +1935,12 @@ kernel void inferno_cons_avg_ig1_flam2(
 
     const device float* weights = cons_avg_data.weights;
     const int M = cons_avg_data.params[0];  // `m` input index, aka `ti`.
-    const int Nout = cons_avg_data.params[1];  // `n` output index.
+    // const int Nout = cons_avg_data.params[1];  // `n` output index. -> this is 12
     const int L = cons_avg_data.params[2];  // Number of land points.
 
-    const int out_shape_2d[2] = { Nout, land_pts };
+    const int out_shape_2d[2] = { 12, land_pts };
     const int shape_2d[2] = { Nt, land_pts };
-    const int weights_shape_2d[2] = { Nt, Nout };
+    const int weights_shape_2d[2] = { Nt, 12 };
     const int total_pft_shape_3d[3] = { Nt, n_total_pft, land_pts };
     const int nat_pft_shape_3d[3] = { Nt, npft, land_pts };
     const int grouped_pft_shape_3d[3] = { Nt, n_pft_groups, land_pts };
@@ -2000,14 +2011,14 @@ kernel void inferno_cons_avg_ig1_flam2(
             );
         }
 
-        for (int n = 0; n < Nout; n++) {
+        for (int n = 0; n < 12; n++) {
             float weight = weights[get_index_2d(ti, n, weights_shape_2d)];
             cum_sum[n] += pft_weighted_ba_ti * weight;
             cum_weight[n] += weight;
         }
     }
 
-    for (int n = 0; n < Nout; n++) {
+    for (int n = 0; n < 12; n++) {
         if (cum_weight[n] > 1e-15) {
             float cons_avg_val = cum_sum[n] / cum_weight[n];
             out[get_index_2d(n, land_i, out_shape_2d)] = cons_avg_val;
@@ -2015,6 +2026,220 @@ kernel void inferno_cons_avg_ig1_flam2(
             out[get_index_2d(n, land_i, out_shape_2d)] = 0.0f;
         }
     }
+}
+)";
+
+
+std::string infernoConsAvgScoreIg1Flam2Kernel = R"(
+kernel void inferno_cons_avg_score_ig1_flam2(
+    // Optimised for only:
+    // - ignition mode 1
+    // - flammability_method 2
+
+    // Output buffer.
+    device float* out [[ buffer(0) ]],
+    // Params.
+    const device int& dryness_method [[ buffer(1) ]],
+    const device int& fuel_build_up_method [[ buffer(2) ]],
+    const device int& include_temperature [[ buffer(3) ]],
+    const device int& Nt [[ buffer(4) ]],  // i.e. <data>.shape[0].
+    // Input arrays.
+    const device DataArrays& data_arrays [[ buffer(5) ]],
+    // Parameters.
+    const device float* fapar_factor [[ buffer(6) ]],
+    const device float* fapar_centre [[ buffer(7) ]],
+    const device float* fapar_shape [[ buffer(8) ]],
+    const device float* fuel_build_up_factor [[ buffer(9) ]],
+    const device float* fuel_build_up_centre [[ buffer(10) ]],
+    const device float* fuel_build_up_shape [[ buffer(11) ]],
+    const device float* temperature_factor [[ buffer(12) ]],
+    const device float* temperature_centre [[ buffer(13) ]],
+    const device float* temperature_shape [[ buffer(14) ]],
+    const device float* dry_day_factor [[ buffer(15) ]],
+    const device float* dry_day_centre [[ buffer(16) ]],
+    const device float* dry_day_shape [[ buffer(17) ]],
+    const device float* dry_bal_factor [[ buffer(18) ]],
+    const device float* dry_bal_centre [[ buffer(19) ]],
+    const device float* dry_bal_shape [[ buffer(20) ]],
+    const device float* litter_pool_factor [[ buffer(21) ]],
+    const device float* litter_pool_centre [[ buffer(22) ]],
+    const device float* litter_pool_shape [[ buffer(23) ]],
+    const device float* fapar_weight [[ buffer(24) ]],
+    const device float* dryness_weight [[ buffer(25) ]],
+    const device float* temperature_weight [[ buffer(26) ]],
+    const device float* fuel_weight [[ buffer(27) ]],
+    const device bool* checks_failed [[ buffer(28) ]],
+    const device ConsAvgObsData& cons_avg_obs_data [[ buffer(29) ]],
+    // Thread index.
+    uint land_i [[ thread_position_in_grid ]]
+) {
+    // Input arrays.
+    const device float* t1p5m_tile = data_arrays.t1p5m_tile;
+    const device float* q1p5m_tile = data_arrays.q1p5m_tile;
+    const device float* pstar = data_arrays.pstar;
+    const device float* sthu_soilt_single = data_arrays.sthu_soilt_single;
+    const device float* frac = data_arrays.frac;
+    const device float* c_soil_dpm_gb = data_arrays.c_soil_dpm_gb;
+    const device float* canht = data_arrays.canht;
+    const device float* ls_rain = data_arrays.ls_rain;
+    const device float* con_rain = data_arrays.con_rain;
+    const device float* fuel_build_up = data_arrays.fuel_build_up;
+    const device float* fapar_diag_pft = data_arrays.fapar_diag_pft;
+    const device float* grouped_dry_bal = data_arrays.grouped_dry_bal;
+    const device float* litter_pool = data_arrays.litter_pool;
+    const device float* dry_days = data_arrays.dry_days;
+
+    const device float* weights = cons_avg_obs_data.weights;
+    const int M = cons_avg_obs_data.params[0];  // `m` input index, aka `ti`.
+    // const int Nout = cons_avg_obs_data.params[1];  // `n` output index. -> 12
+    const int L = cons_avg_obs_data.params[2];  // Number of land points.
+    const device float* obsAll = cons_avg_obs_data.obs; // BA observations, [12, L].
+    const device float* cropAll = cons_avg_obs_data.crop; // Crop observations, [12, L].
+    const float overall_scale = cons_avg_obs_data.opt_params[0];  // Overall scale parameter.
+    const float crop_f = cons_avg_obs_data.opt_params[1];  // crop_f parameter.
+
+    const int out_shape_2d[2] = { 12 , land_pts };
+    const int shape_2d[2] = { Nt, land_pts };
+    const int weights_shape_2d[2] = { Nt, 12 };
+    const int total_pft_shape_3d[3] = { Nt, n_total_pft, land_pts };
+    const int nat_pft_shape_3d[3] = { Nt, npft, land_pts };
+    const int grouped_pft_shape_3d[3] = { Nt, n_pft_groups, land_pts };
+
+    // Temporary variables used to compute the conservative average.
+    float cum_sum[12] = { };
+    float cum_weight[12] = { };
+
+    // Temporary variable used to hold the scores.
+    float scores[2] = { };
+
+    for (int ti = 0; ti < Nt; ti++) {
+
+        float pft_weighted_ba_ti = 0.0f;
+
+        for (int pft_i = 0; pft_i < npft; pft_i++) {
+            int nat_pft_3d_flat_i = get_index_3d(ti, pft_i, land_i, nat_pft_shape_3d);
+
+            if (checks_failed[nat_pft_3d_flat_i]) continue;
+
+            // If all the checks were passes, start fire calculations
+
+            const int pft_group_i = get_pft_group_index(pft_i);
+
+            int total_pft_3d_flat_i = get_index_3d(ti, pft_i, land_i, total_pft_shape_3d);
+            int grouped_pft_3d_flat_i = get_index_3d(ti, pft_group_i, land_i, grouped_pft_shape_3d);
+            int flat_2d = get_index_2d(ti, land_i, shape_2d);
+
+            float temperature = t1p5m_tile[total_pft_3d_flat_i];
+            float fuel_build_up_val = fuel_build_up[nat_pft_3d_flat_i];
+            float fapar_diag_pft_val = fapar_diag_pft[nat_pft_3d_flat_i];
+            float dry_days_val = dry_days[flat_2d];
+            float litter_pool_val = litter_pool[nat_pft_3d_flat_i];
+            float grouped_dry_bal_val = grouped_dry_bal[grouped_pft_3d_flat_i];
+            float frac_val = frac[total_pft_3d_flat_i];
+
+            pft_weighted_ba_ti +=  calculate_weighted_ba(
+                pft_i,
+                temperature,
+                fuel_build_up_val,
+                fapar_diag_pft_val,
+                dry_days_val,
+                dryness_method,
+                fuel_build_up_method,
+                fapar_factor[pft_group_i],
+                fapar_centre[pft_group_i],
+                fapar_shape[pft_group_i],
+                fuel_build_up_factor[pft_group_i],
+                fuel_build_up_centre[pft_group_i],
+                fuel_build_up_shape[pft_group_i],
+                temperature_factor[pft_group_i],
+                temperature_centre[pft_group_i],
+                temperature_shape[pft_group_i],
+                dry_day_factor[pft_group_i],
+                dry_day_centre[pft_group_i],
+                dry_day_shape[pft_group_i],
+                grouped_dry_bal_val,
+                dry_bal_factor[pft_group_i],
+                dry_bal_centre[pft_group_i],
+                dry_bal_shape[pft_group_i],
+                litter_pool_val,
+                litter_pool_factor[pft_group_i],
+                litter_pool_centre[pft_group_i],
+                litter_pool_shape[pft_group_i],
+                include_temperature,
+                fapar_weight[pft_group_i],
+                dryness_weight[pft_group_i],
+                temperature_weight[pft_group_i],
+                fuel_weight[pft_group_i],
+                frac_val
+            );
+        }
+
+        for (int n = 0; n < 12; n++) {
+            float weight = weights[get_index_2d(ti, n, weights_shape_2d)];
+            cum_sum[n] += pft_weighted_ba_ti * weight;
+            cum_weight[n] += weight;
+        }
+    }
+
+    float meanObsVal = 0.0f;
+    float sumAbsDiffVal = 0.0f;
+    float lxObs = 0.0f;
+    float lyObs = 0.0f;
+    float lxPred = 0.0f;
+    float lyPred = 0.0f;
+    unsigned int flat_index;
+    unsigned int obsCloseZeroCount = 0;
+    unsigned int predCloseZeroCount = 0;
+    float masked = 0.0f;  // bool as float for convenience.
+
+    for (int n = 0; n < 12; n++) {
+        float obsVal = obsAll[get_index_2d(n, land_i, out_shape_2d)];
+        float cropVal = cropAll[get_index_2d(n, land_i, out_shape_2d)];
+
+        float predVal;
+
+        if (cum_weight[n] > 1e-15) {
+            predVal = cum_sum[n] / cum_weight[n];
+            predVal *= overall_scale;
+            predVal *= (1 - crop_f * cropVal);
+        } else {
+            predVal = 0.0f;
+        }
+
+        // Arcsinh NME
+        float asinhPredVal = asinh(ARCSINH_FACTOR * predVal);
+        float asinhObsVal = asinh(ARCSINH_FACTOR * obsVal);
+        meanObsVal += asinhObsVal;
+        sumAbsDiffVal += abs(asinhPredVal - asinhObsVal);
+
+        // MPD
+        lxObs += obsVal * cosThetas[n];
+        lyObs += obsVal * sinThetas[n];
+
+        lxPred += predVal * cosThetas[n];
+        lyPred += predVal * sinThetas[n];
+
+        if (abs(obsVal) < 1e-15) obsCloseZeroCount += 1;
+        if (abs(predVal) < 1e-15) predCloseZeroCount += 1;
+    }
+
+    // Arcsinh NME
+    // Get mean values.
+    meanObsVal /= 12.0;
+
+    // MPD
+    if ((obsCloseZeroCount == 12) || (predCloseZeroCount == 12)) masked = 1.0f;
+
+    float obsPhase = atan2(lxObs, lyObs);
+    float predPhase = atan2(lxPred, lyPred);
+
+    // Record arcsinh NME, MPD precursors.
+    int offset = 4 * land_i;
+
+    out[offset] = meanObsVal;  // Mean at this land point.
+    out[offset + 1] = sumAbsDiffVal;  // Sum abs diff at this land point.
+    out[offset + 2] = acos(cos(predPhase - obsPhase));  // Phase diff at this land point.
+    out[offset + 3] = masked;  // Masked (0 / 1) at this land point.
 }
 )";
 

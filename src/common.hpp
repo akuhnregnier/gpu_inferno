@@ -19,6 +19,8 @@ constexpr int dataSize = sizeof(float);
 constexpr int paramSize = sizeof(int);
 constexpr int boolSize = sizeof(bool);
 
+const float ARCSINH_FACTOR = 1e6;
+
 const int landPts = 7771;
 const int nPFTGroups = 3;
 const int nPFT = 13;

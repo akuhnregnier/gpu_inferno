@@ -10,17 +10,19 @@
 #include <QuartzCore/QuartzCore.hpp>
 // ---------------------------------
 
-#include "inferno.hpp"
-#include "infernoAvg.hpp"
-#include "phase.hpp"
-#include "mpd.hpp"
-#include "flam.hpp"
+#include <math.h>
+#include <pybind11/numpy.h>
+#include <pybind11/pybind11.h>
+#include <stdexcept>
+
 #include "consAvg.hpp"
 #include "consAvgNoMask.hpp"
-#include <pybind11/pybind11.h>
-#include <pybind11/numpy.h>
-#include <math.h>
-#include <stdexcept>
+#include "flam.hpp"
+#include "inferno.hpp"
+#include "infernoAvg.hpp"
+#include "infernoAvgScore.hpp"
+#include "mpd.hpp"
+#include "phase.hpp"
 
 
 namespace py = pybind11;
@@ -34,7 +36,6 @@ float nme(pyArray obs, pyArray pred) {
     if (obsInfo.shape != predInfo.shape)
         throw std::runtime_error("Incompatible buffer shapes!");
 
-    int i;
     int N = obsInfo.size;
     float* obsPtr = (float*)obsInfo.ptr;
     float* predPtr = (float*)predInfo.ptr;
@@ -47,12 +48,12 @@ float nme(pyArray obs, pyArray pred) {
     float denom = 0.0f;
     float meanAbsDiff = 0.0f;
 
-    for (i = 0; i < N; i++) {
+    for (int i = 0; i < N; i++) {
         meanObs += obsPtr[i];
     }
     meanObs /= N;
 
-    for (i = 0; i < N; i++) {
+    for (int i = 0; i < N; i++) {
         float obsVal;
         obsVal = obsPtr[i];
         denom += abs(obsVal - meanObs);
@@ -327,4 +328,62 @@ PYBIND11_MODULE(py_gpu_inferno, m) {
             py::arg("fuel_weight")
         )
         .def("release", &GPUFlam2::release, "Release");
+
+    py::class_<GPUInfernoAvgScore>(m, "GPUInfernoAvgScore")
+        .def(py::init<int, pyArray, pyArray, pyArray>())
+        .def("run", &GPUInfernoAvgScore::run, "Run INFERNO with conservative averaging and scoring.",
+            py::arg("overall_scale"),
+            py::arg("crop_f")
+        )
+        .def("set_data", &GPUInfernoAvgScore::set_data, "Set input data.",
+            py::arg("ignitionMethod"),
+            py::arg("flammabilityMethod"),
+            py::arg("drynessMethod"),
+            py::arg("fuelBuildUpMethod"),
+            py::arg("includeTemperature"),
+            py::arg("Nt"),
+            py::arg("t1p5m_tile"),
+            py::arg("q1p5m_tile"),
+            py::arg("pstar"),
+            py::arg("sthu_soilt_single"),
+            py::arg("frac"),
+            py::arg("c_soil_dpm_gb"),
+            py::arg("c_soil_rpm_gb"),
+            py::arg("canht"),
+            py::arg("ls_rain"),
+            py::arg("con_rain"),
+            py::arg("pop_den"),
+            py::arg("flash_rate"),
+            py::arg("fuel_build_up"),
+            py::arg("fapar_diag_pft"),
+            py::arg("grouped_dry_bal"),
+            py::arg("litter_pool"),
+            py::arg("dry_days"),
+            py::arg("checks_failed")
+        )
+        .def("set_params", &GPUInfernoAvgScore::set_params, "Set input parameters.",
+            py::arg("fapar_factor"),
+            py::arg("fapar_centre"),
+            py::arg("fapar_shape"),
+            py::arg("fuel_build_up_factor"),
+            py::arg("fuel_build_up_centre"),
+            py::arg("fuel_build_up_shape"),
+            py::arg("temperature_factor"),
+            py::arg("temperature_centre"),
+            py::arg("temperature_shape"),
+            py::arg("dry_day_factor"),
+            py::arg("dry_day_centre"),
+            py::arg("dry_day_shape"),
+            py::arg("dry_bal_factor"),
+            py::arg("dry_bal_centre"),
+            py::arg("dry_bal_shape"),
+            py::arg("litter_pool_factor"),
+            py::arg("litter_pool_centre"),
+            py::arg("litter_pool_shape"),
+            py::arg("fapar_weight"),
+            py::arg("dryness_weight"),
+            py::arg("temperature_weight"),
+            py::arg("fuel_weight")
+        )
+        .def("release", &GPUInfernoAvgScore::release, "Release autorelease pool.");
 }
