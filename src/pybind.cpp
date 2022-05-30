@@ -23,6 +23,7 @@
 #include "infernoAvgScore.hpp"
 #include "mpd.hpp"
 #include "phase.hpp"
+#include "sensitivity_analysis.hpp"
 
 
 namespace py = pybind11;
@@ -386,4 +387,50 @@ PYBIND11_MODULE(py_gpu_inferno, m) {
             py::arg("fuel_weight")
         )
         .def("release", &GPUInfernoAvgScore::release, "Release autorelease pool.");
+
+    py::class_<GPUSACompute>(m, "GPUSACompute")
+        .def(py::init<int, pyBoolArray>())
+        .def("run", &GPUSACompute::run, "Run INFERNO SA",
+            py::arg("out")
+        )
+        .def("getMaxNSamples", &GPUSACompute::getMaxNSamples, "Get maxNSamples")
+        .def("setData", &GPUSACompute::setData, "Set input data.",
+            py::arg("drynessMethod"),
+            py::arg("fuelBuildUpMethod"),
+            py::arg("includeTemperature"),
+            py::arg("nSamples"),
+            py::arg("overallScale"),
+            py::arg("crop_f"),
+            py::arg("t1p5m_tile"),
+            py::arg("frac"),
+            py::arg("fuel_build_up"),
+            py::arg("fapar_diag_pft"),
+            py::arg("grouped_dry_bal"),
+            py::arg("litter_pool"),
+            py::arg("dry_days"),
+            py::arg("obs_pftcrop_1d"),
+            py::arg("fapar_factor"),
+            py::arg("fapar_centre"),
+            py::arg("fapar_shape"),
+            py::arg("fuel_build_up_factor"),
+            py::arg("fuel_build_up_centre"),
+            py::arg("fuel_build_up_shape"),
+            py::arg("temperature_factor"),
+            py::arg("temperature_centre"),
+            py::arg("temperature_shape"),
+            py::arg("dry_day_factor"),
+            py::arg("dry_day_centre"),
+            py::arg("dry_day_shape"),
+            py::arg("dry_bal_factor"),
+            py::arg("dry_bal_centre"),
+            py::arg("dry_bal_shape"),
+            py::arg("litter_pool_factor"),
+            py::arg("litter_pool_centre"),
+            py::arg("litter_pool_shape"),
+            py::arg("fapar_weight"),
+            py::arg("dryness_weight"),
+            py::arg("temperature_weight"),
+            py::arg("fuel_weight")
+        )
+        .def("release", &GPUSACompute::release, "Release autorelease pool.");
 }

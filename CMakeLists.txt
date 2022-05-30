@@ -34,8 +34,10 @@ pybind11_add_module(${PROJECT_NAME}
     src/loadLibraryCommon.hpp
     src/loadMPDLibrary.hpp
     src/loadPhaseLibrary.hpp
+    src/loadSALibrary.hpp
     src/mpd.hpp
     src/phase.hpp
+    src/sensitivity_analysis.hpp
 )
 
 set(PYTHON_EXECUTABLE "/Users/alexander/.pyenv-arm64/versions/miniconda3-latest/envs/python-inferno/bin/python3")

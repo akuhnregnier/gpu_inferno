@@ -2137,7 +2137,7 @@ kernel void inferno_cons_avg_score_ig1_flam2(
             float grouped_dry_bal_val = grouped_dry_bal[grouped_pft_3d_flat_i];
             float frac_val = frac[total_pft_3d_flat_i];
 
-            pft_weighted_ba_ti +=  calculate_weighted_ba(
+            pft_weighted_ba_ti += calculate_weighted_ba(
                 pft_i,
                 temperature,
                 fuel_build_up_val,
@@ -2240,6 +2240,193 @@ kernel void inferno_cons_avg_score_ig1_flam2(
     out[offset + 1] = sumAbsDiffVal;  // Sum abs diff at this land point.
     out[offset + 2] = acos(cos(predPhase - obsPhase));  // Phase diff at this land point.
     out[offset + 3] = masked;  // Masked (0 / 1) at this land point.
+}
+)";
+
+
+std::string SAStruct = R"(
+struct SAArrays {
+    // Input arrays.
+    const device float* t1p5m_tile [[ id(0) ]];  // (n_samples, Nt, npft)
+    const device float* frac [[ id(1) ]];  // (n_samples, Nt, npft)
+    const device float* fuel_build_up [[ id(2) ]];  // (n_samples, Nt, npft)
+    const device float* fapar_diag_pft [[ id(3) ]];  // (n_samples, Nt, npft)
+    const device float* grouped_dry_bal [[ id(4) ]];  // (n_samples, Nt, n_pft_groups)
+    const device float* litter_pool [[ id(5) ]];  // (n_samples, Nt, npft)
+    const device float* dry_days [[ id(6) ]]; // (n_samples, Nt)
+    const device float* obs_pftcrop_1d [[ id(7) ]]; // (n_samples, Nt)
+    // Parameters.
+    const device float* fapar_factor [[ id(8) ]];  // (n_samples, n_pft_groups)
+    const device float* fapar_centre [[ id(9) ]];  // (n_samples, n_pft_groups)
+    const device float* fapar_shape [[ id(10) ]];  // (n_samples, n_pft_groups)
+    const device float* fuel_build_up_factor [[ id(11) ]];  // (n_samples, n_pft_groups)
+    const device float* fuel_build_up_centre [[ id(12) ]];  // (n_samples, n_pft_groups)
+    const device float* fuel_build_up_shape [[ id(13) ]];  // (n_samples, n_pft_groups)
+    const device float* temperature_factor [[ id(14) ]];  // (n_samples, n_pft_groups)
+    const device float* temperature_centre [[ id(15) ]];  // (n_samples, n_pft_groups)
+    const device float* temperature_shape [[ id(16) ]];  // (n_samples, n_pft_groups)
+    const device float* dry_day_factor [[ id(17) ]];  // (n_samples, n_pft_groups)
+    const device float* dry_day_centre [[ id(18) ]];  // (n_samples, n_pft_groups)
+    const device float* dry_day_shape [[ id(19) ]];  // (n_samples, n_pft_groups)
+    const device float* dry_bal_factor [[ id(20) ]];  // (n_samples, n_pft_groups)
+    const device float* dry_bal_centre [[ id(21) ]];  // (n_samples, n_pft_groups)
+    const device float* dry_bal_shape [[ id(22) ]];  // (n_samples, n_pft_groups)
+    const device float* litter_pool_factor [[ id(23) ]];  // (n_samples, n_pft_groups)
+    const device float* litter_pool_centre [[ id(24) ]];  // (n_samples, n_pft_groups)
+    const device float* litter_pool_shape [[ id(25) ]];  // (n_samples, n_pft_groups)
+    const device float* fapar_weight [[ id(26) ]];  // (n_samples, n_pft_groups)
+    const device float* dryness_weight [[ id(27) ]];  // (n_samples, n_pft_groups)
+    const device float* temperature_weight [[ id(28) ]];  // (n_samples, n_pft_groups)
+    const device float* fuel_weight [[ id(29) ]]; // (n_samples, n_pft_groups)
+};
+)";
+
+
+std::string SAInfernoIg1Flam2Kernel = R"(
+kernel void sa_inferno_ig1_flam2(
+    // Runs over different samples at fixed land index for SA.
+    //
+    // Optimised for only:
+    // - ignition mode 1
+    // - flammability_method 2
+
+    // Output buffer.
+    device float* out [[ buffer(0) ]],
+    // Params.
+    const device int& dryness_method [[ buffer(1) ]],
+    const device int& fuel_build_up_method [[ buffer(2) ]],
+    const device int& include_temperature [[ buffer(3) ]],
+    const device int& Nt [[ buffer(4) ]],
+    const device int& n_samples [[ buffer(5) ]],
+    const device float& overall_scale [[ buffer(6) ]],
+    const device float& crop_f [[ buffer(7) ]],
+    const device SAArrays& sa_arrays [[ buffer(8) ]],
+    const device bool* checks_failed [[ buffer(9) ]],
+    // Thread index.
+    uint n_samples_Nt_npft_flat_i [[ thread_position_in_grid ]]
+) {
+    // Input arrays.
+    const device float* t1p5m_tile = sa_arrays.t1p5m_tile;  // (n_samples, Nt, npft)
+    const device float* frac = sa_arrays.frac;  // (n_samples, Nt, npft)
+    const device float* fuel_build_up = sa_arrays.fuel_build_up;  // (n_samples, Nt, npft)
+    const device float* fapar_diag_pft = sa_arrays.fapar_diag_pft;  // (n_samples, Nt, npft)
+    const device float* grouped_dry_bal = sa_arrays.grouped_dry_bal;  // (n_samples, Nt, n_pft_groups)
+    const device float* litter_pool = sa_arrays.litter_pool;  // (n_samples, Nt, npft)
+    const device float* dry_days = sa_arrays.dry_days;  // (n_samples, Nt)
+    const device float* obs_pftcrop_1d = sa_arrays.obs_pftcrop_1d;  // (n_samples, Nt)
+    // Parameters.
+    const device float* fapar_factor = sa_arrays.fapar_factor;  // (n_samples, n_pft_groups)
+    const device float* fapar_centre = sa_arrays.fapar_centre;  // (n_samples, n_pft_groups)
+    const device float* fapar_shape = sa_arrays.fapar_shape;  // (n_samples, n_pft_groups)
+    const device float* fuel_build_up_factor = sa_arrays.fuel_build_up_factor;  // (n_samples, n_pft_groups)
+    const device float* fuel_build_up_centre = sa_arrays.fuel_build_up_centre;  // (n_samples, n_pft_groups)
+    const device float* fuel_build_up_shape = sa_arrays.fuel_build_up_shape;  // (n_samples, n_pft_groups)
+    const device float* temperature_factor = sa_arrays.temperature_factor;  // (n_samples, n_pft_groups)
+    const device float* temperature_centre = sa_arrays.temperature_centre;  // (n_samples, n_pft_groups)
+    const device float* temperature_shape = sa_arrays.temperature_shape;  // (n_samples, n_pft_groups)
+    const device float* dry_day_factor = sa_arrays.dry_day_factor;  // (n_samples, n_pft_groups)
+    const device float* dry_day_centre = sa_arrays.dry_day_centre;  // (n_samples, n_pft_groups)
+    const device float* dry_day_shape = sa_arrays.dry_day_shape;  // (n_samples, n_pft_groups)
+    const device float* dry_bal_factor = sa_arrays.dry_bal_factor;  // (n_samples, n_pft_groups)
+    const device float* dry_bal_centre = sa_arrays.dry_bal_centre;  // (n_samples, n_pft_groups)
+    const device float* dry_bal_shape = sa_arrays.dry_bal_shape;  // (n_samples, n_pft_groups)
+    const device float* litter_pool_factor = sa_arrays.litter_pool_factor;  // (n_samples, n_pft_groups)
+    const device float* litter_pool_centre = sa_arrays.litter_pool_centre;  // (n_samples, n_pft_groups)
+    const device float* litter_pool_shape = sa_arrays.litter_pool_shape;  // (n_samples, n_pft_groups)
+    const device float* fapar_weight = sa_arrays.fapar_weight;  // (n_samples, n_pft_groups)
+    const device float* dryness_weight = sa_arrays.dryness_weight;  // (n_samples, n_pft_groups)
+    const device float* temperature_weight = sa_arrays.temperature_weight;  // (n_samples, n_pft_groups)
+    const device float* fuel_weight = sa_arrays.fuel_weight;  // (n_samples, n_pft_groups)
+
+    const int n_samples_Nt_2d[2] = { n_samples, Nt };
+    const int n_samples_n_pft_groups_2d[2] = { n_samples, n_pft_groups };
+    const int n_samples_Nt_n_pft_groups_3d[3] = { n_samples, Nt, n_pft_groups };
+
+    float burnt_area_ft_i_l, flammability_ft_i_l, temperature,
+          fuel_build_up_val, fapar_diag_pft_val, dry_days_val,
+          grouped_dry_bal_val, litter_pool_val, frac_val, crop_val;
+
+    // Get sample_i, ti, and i from the thread id, which is in [0, n_samples * Nt * npft).
+
+    // Work backwards to retrieve all 3 indices.
+    const int sample_i = n_samples_Nt_npft_flat_i / (Nt * npft);  // Sample index
+
+    int remainder = n_samples_Nt_npft_flat_i - (sample_i * Nt * npft);
+    const int ti = remainder / npft;  // Time index
+
+    remainder -= ti * npft;
+    const int i = remainder;  // PFT index
+
+    // Checks.
+    const int Nt_npft_2d[2] = { Nt, npft };
+    if (checks_failed[get_index_2d(ti, i, Nt_npft_2d)]) {
+        out[n_samples_Nt_npft_flat_i] = 0.0f;
+        return;
+    }
+
+    // PFT group index.
+    const int pft_group_i = get_pft_group_index(i);
+
+    const int n_samples_Nt_n_pft_groups_flat_i = get_index_3d(sample_i, ti, pft_group_i, n_samples_Nt_n_pft_groups_3d);
+    const int n_samples_Nt_flat_i = get_index_2d(sample_i, ti, n_samples_Nt_2d);
+    const int n_samples_n_pft_groups_flat_i = get_index_2d(sample_i, pft_group_i, n_samples_n_pft_groups_2d);
+
+    temperature = t1p5m_tile[n_samples_Nt_npft_flat_i];
+    frac_val = frac[n_samples_Nt_npft_flat_i];
+    fuel_build_up_val = fuel_build_up[n_samples_Nt_npft_flat_i];
+    fapar_diag_pft_val = fapar_diag_pft[n_samples_Nt_npft_flat_i];
+    grouped_dry_bal_val = grouped_dry_bal[n_samples_Nt_n_pft_groups_flat_i];
+    litter_pool_val = litter_pool[n_samples_Nt_npft_flat_i];
+    dry_days_val = dry_days[n_samples_Nt_flat_i];
+    crop_val = obs_pftcrop_1d[n_samples_Nt_flat_i];
+
+    flammability_ft_i_l = calc_flam_flam2(
+        temperature,
+        fuel_build_up_val,
+        fapar_diag_pft_val,
+        dry_days_val,
+        dryness_method,
+        fuel_build_up_method,
+        fapar_factor[n_samples_n_pft_groups_flat_i],
+        fapar_centre[n_samples_n_pft_groups_flat_i],
+        fapar_shape[n_samples_n_pft_groups_flat_i],
+        fuel_build_up_factor[n_samples_n_pft_groups_flat_i],
+        fuel_build_up_centre[n_samples_n_pft_groups_flat_i],
+        fuel_build_up_shape[n_samples_n_pft_groups_flat_i],
+        temperature_factor[n_samples_n_pft_groups_flat_i],
+        temperature_centre[n_samples_n_pft_groups_flat_i],
+        temperature_shape[n_samples_n_pft_groups_flat_i],
+        dry_day_factor[n_samples_n_pft_groups_flat_i],
+        dry_day_centre[n_samples_n_pft_groups_flat_i],
+        dry_day_shape[n_samples_n_pft_groups_flat_i],
+        grouped_dry_bal_val,
+        dry_bal_factor[n_samples_n_pft_groups_flat_i],
+        dry_bal_centre[n_samples_n_pft_groups_flat_i],
+        dry_bal_shape[n_samples_n_pft_groups_flat_i],
+        litter_pool_val,
+        litter_pool_factor[n_samples_n_pft_groups_flat_i],
+        litter_pool_centre[n_samples_n_pft_groups_flat_i],
+        litter_pool_shape[n_samples_n_pft_groups_flat_i],
+        include_temperature,
+        fapar_weight[n_samples_n_pft_groups_flat_i],
+        dryness_weight[n_samples_n_pft_groups_flat_i],
+        temperature_weight[n_samples_n_pft_groups_flat_i],
+        fuel_weight[n_samples_n_pft_groups_flat_i]
+    );
+
+    burnt_area_ft_i_l = calc_burnt_area(
+        flammability_ft_i_l,
+        // NOTE OPT ignition mode 1 only
+        total_ignition_1,
+        avg_ba[i]
+    );
+
+    // Simply record the pft-specific variables weighted by frac, calculate
+    // gridbox totals later.
+    float pred_ba = burnt_area_ft_i_l * frac_val;
+    pred_ba *= overall_scale;
+    pred_ba *= (1 - crop_f * crop_val);
+    out[n_samples_Nt_npft_flat_i] = pred_ba;
 }
 )";
 
