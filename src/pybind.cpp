@@ -389,7 +389,7 @@ PYBIND11_MODULE(py_gpu_inferno, m) {
         .def("release", &GPUInfernoAvgScore::release, "Release autorelease pool.");
 
     py::class_<GPUSACompute>(m, "GPUSACompute")
-        .def(py::init<int, pyBoolArray>())
+        .def(py::init<int>())
         .def("run", &GPUSACompute::run, "Run INFERNO SA",
             py::arg("out")
         )

@@ -42,27 +42,17 @@ public:
 
     MTL::ArgumentEncoder* argumentEncoder;
     MTL::Buffer* argumentBuffer;
-    MTL::Buffer* checksFailedBuffer;
 
     MTL::Buffer* createBufferFromPyArray(pyArray array) {
         py::buffer_info buf = array.request();
         return device->newBuffer(static_cast<float *>(buf.ptr), buf.shape[0] * dataSize, MTL::ResourceOptions());
     }
 
-    GPUSACompute(int Nt, pyBoolArray checksFailed) : GPUBase(
+    GPUSACompute(int Nt) : GPUBase(
         loadSALibrary,
         "sa_inferno_ig1_flam2"
     ) {
         this->Nt = Nt;
-        py::buffer_info checksFailedInfo = checksFailed.request();
-        if (checksFailedInfo.size != Nt * nPFT)
-            throw std::runtime_error("Wrong checksFailed size!");
-        checksFailedBuffer = device->newBuffer(
-            (bool*)checksFailedInfo.ptr,
-            Nt * nPFT * boolSize,
-            MTL::ResourceOptions()
-        );
-        releaseLater(checksFailedBuffer);
 
         argumentEncoder = fn->newArgumentEncoder(8);
         argumentBuffer = device->newBuffer(argumentEncoder->encodedLength(), MTL::ResourceOptions());
@@ -245,8 +235,6 @@ public:
         for (unsigned long i = 0; i < nData; i++) {
             computeCommandEncoder->useResource(saBuffers[i], MTL::ResourceUsageRead);
         }
-
-        computeCommandEncoder->setBuffer(checksFailedBuffer, 0, 9);
 
         submit(nSamples * Nt * nPFT, runParams);
 

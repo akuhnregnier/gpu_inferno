@@ -2301,7 +2301,6 @@ kernel void sa_inferno_ig1_flam2(
     const device float& overall_scale [[ buffer(6) ]],
     const device float& crop_f [[ buffer(7) ]],
     const device SAArrays& sa_arrays [[ buffer(8) ]],
-    const device bool* checks_failed [[ buffer(9) ]],
     // Thread index.
     uint n_samples_Nt_npft_flat_i [[ thread_position_in_grid ]]
 ) {
@@ -2359,10 +2358,6 @@ kernel void sa_inferno_ig1_flam2(
 
     // Checks.
     const int Nt_npft_2d[2] = { Nt, npft };
-    if (checks_failed[get_index_2d(ti, i, Nt_npft_2d)]) {
-        out[n_samples_Nt_npft_flat_i] = 0.0f;
-        return;
-    }
 
     // PFT group index.
     const int pft_group_i = get_pft_group_index(i);
