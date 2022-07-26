@@ -25,7 +25,7 @@ using pyBoolArray = py::array_t<bool, py::array::c_style>;
 class GPUInfernoAvgScore final : public GPUInfernoAvgBase {
 
     // How many results will be produced per land point.
-    static const int scoreUnitWidth = 4;
+    static const int scoreUnitWidth = 5;
 
     MTL::Buffer* obsBuffer;  // BA Observations.
     MTL::Buffer* cropBuffer;  // Crop Observations.
@@ -78,12 +78,13 @@ public:
         //  1 - Sum abs(pred - obs) at land point (for arcsinh NME)
         //  2 - phase diff (float) (for MPD)
         //  3 - phase diff ignored (1 / 0) (for MPD)
+        //  4 - arcsinh squared error (for arcsinh-SSE)
         // All in a single float buffer for convenience - will be aggregated in run().
         outputBuffer = device->newBuffer(scoreUnitWidth * L * dataSize, MTL::ResourceOptions());
         releaseLater(outputBuffer);
     }
 
-    std::tuple<float, float, int> run(float overall_scale, float crop_f) {
+    std::tuple<float, float, int, float> run(float overall_scale, float crop_f) {
         // Return:
         // - Arcsinh NME
         // - MPD
@@ -134,7 +135,7 @@ public:
 
         submit(landPts, runParams);
 
-        // Aggregate output into arcsinh NME, MPD.
+        // Aggregate output into arcsinh NME, MPD, arcsinh SSE.
         float* outPtr = (float*)outputBuffer->contents();
         // Arcsinh NME
         float meanObs = 0.0f;
@@ -143,6 +144,9 @@ public:
         // MPD
         float mpd = 0.0f;
         int nIgnored = 0;
+        // Arcsinh SSE
+        float asinh_sse = 0.0f;
+
         for (int i = 0; i < L; i++) {
             int offset = scoreUnitWidth * i;
 
@@ -157,6 +161,9 @@ public:
             } else {
                 mpd += outPtr[offset + 2];
             }
+
+            // Arcsinh SSE
+            asinh_sse += outPtr[offset + 4];
         }
         meanObs /= L;
         mpd /= (L - nIgnored);
@@ -172,7 +179,7 @@ public:
 
         py::gil_scoped_acquire acquire;
 
-        return std::make_tuple(arcsinh_nme, mpd, nIgnored);
+        return std::make_tuple(arcsinh_nme, mpd, nIgnored, asinh_sse);
     }
 };
 

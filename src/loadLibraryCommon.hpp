@@ -2191,6 +2191,7 @@ kernel void inferno_cons_avg_score_ig1_flam2(
     unsigned int obsCloseZeroCount = 0;
     unsigned int predCloseZeroCount = 0;
     float masked = 0.0f;  // bool as float for convenience.
+    float asinh_sse = 0.0f;  // for arcsinh-SSE
 
     for (int n = 0; n < 12; n++) {
         float obsVal = obsAll[get_index_2d(n, land_i, out_shape_2d)];
@@ -2209,8 +2210,9 @@ kernel void inferno_cons_avg_score_ig1_flam2(
         // Arcsinh NME
         float asinhPredVal = asinh(ARCSINH_FACTOR * predVal);
         float asinhObsVal = asinh(ARCSINH_FACTOR * obsVal);
+        float diff = asinhPredVal - asinhObsVal;
         meanObsVal += asinhObsVal;
-        sumAbsDiffVal += abs(asinhPredVal - asinhObsVal);
+        sumAbsDiffVal += abs(diff);
 
         // MPD
         lxObs += obsVal * cosThetas[n];
@@ -2221,6 +2223,9 @@ kernel void inferno_cons_avg_score_ig1_flam2(
 
         if (abs(obsVal) < 1e-15) obsCloseZeroCount += 1;
         if (abs(predVal) < 1e-15) predCloseZeroCount += 1;
+
+        // Arcsinh SSE
+        asinh_sse += diff * diff;
     }
 
     // Arcsinh NME
@@ -2234,12 +2239,13 @@ kernel void inferno_cons_avg_score_ig1_flam2(
     float predPhase = atan2(lxPred, lyPred);
 
     // Record arcsinh NME, MPD precursors.
-    int offset = 4 * land_i;
+    int offset = 5 * land_i;
 
     out[offset] = meanObsVal;  // Mean at this land point.
     out[offset + 1] = sumAbsDiffVal;  // Sum abs diff at this land point.
     out[offset + 2] = acos(cos(predPhase - obsPhase));  // Phase diff at this land point.
     out[offset + 3] = masked;  // Masked (0 / 1) at this land point.
+    out[offset + 4] = asinh_sse;  // Sum of squared errors at this land point.
 }
 )";
 
