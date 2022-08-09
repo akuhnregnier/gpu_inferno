@@ -22,7 +22,7 @@ using pyArray = py::array_t<float, py::array::c_style>;
 class GPUSACompute final : public GPUBase {
 public:
     static const int nData = 30;
-    static const int maxNSamples = 10000;
+    static const int maxNSamples = 30000;
     constexpr static const std::array<int, 5> samples_Nt_npft_indices = { 0, 1, 2, 3, 5};
 
     MTL::Buffer* outputBuffer;
